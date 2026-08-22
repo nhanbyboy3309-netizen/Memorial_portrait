@@ -1,0 +1,10 @@
+{
+  "name": "Memorial portrait",
+  "description": "PHOTO MOMENTS - Ứng dụng xử lý ảnh khổ lớn (20x30) chuyên dụng.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
