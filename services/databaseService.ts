@@ -49,16 +49,41 @@ export const savePhotoToCloud = async (photo: SavedPhoto, overrideUrl?: string):
     return (result && result.success) ? (result.id || photo.id) : null;
 };
 
+// Ảnh lưu qua Google Apps Script giờ được upload lên Drive và trả về DẠNG LINK
+// (không còn là chuỗi base64 như trước — xem GoogleAppsScript.js/uploadDataUrlToDrive).
+// Mọi nơi tiêu thụ ảnh lấy từ getPhotoById (đặc biệt là luồng "Dùng điện thoại" đưa
+// thẳng vào trình chỉnh sửa/AI) đều giả định dataUrl là "data:image/...;base64,..." —
+// gửi thẳng một URL cho canvas (lỗi "tainted canvas") hoặc cho AI xử lý ảnh (Gemini
+// nhận về một chuỗi URL thay vì byte ảnh) sẽ thất bại hoàn toàn. Chuẩn hoá về base64
+// ngay tại đây để phần còn lại của app không cần biết ảnh đến từ Sheet hay từ Drive.
+const toDataUrl = async (url: string): Promise<string> => {
+    if (!url || url.indexOf('data:') === 0) return url;
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+    });
+};
+
 export const getPhotoById = async (id: string, overrideUrl?: string, skipRetry: boolean = false): Promise<SavedPhoto | null> => {
     // Tăng cường số lần thử và độ trễ để đợi Apps Script xử lý xong (Cold Start)
     const maxRetries = skipRetry ? 1 : 5;
-    
+
     for (let i = 0; i < maxRetries; i++) {
         const result = await callAppsScript('getPhoto', { id }, overrideUrl);
         if (result && result.success && result.photo) {
-            return result.photo as SavedPhoto;
+            const photo = result.photo as SavedPhoto;
+            try {
+                photo.dataUrl = await toDataUrl(photo.dataUrl);
+            } catch (e) {
+                console.error('Failed to normalize photo URL to base64:', e);
+            }
+            return photo;
         }
-        
+
         if (i < maxRetries - 1) {
             await new Promise(r => setTimeout(r, 1500));
         }

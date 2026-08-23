@@ -2,46 +2,71 @@
 import { BackgroundType, BeautySettings, PhotoSize } from "../types";
 
 /* ======================================================
-   1️⃣ ANALYZE CAMERA FRAME (JSON ONLY)
+   DETERMINE APPROPRIATE AI MODEL
+   Simple edits (background only) use the fast flash model;
+   heavier generative work (restoration/colorize/sharpen,
+   makeup, hair, clothing, custom prompts) uses the
+   professional-grade pro model for better quality.
 ====================================================== */
-export const analyzeIDPhotoFrame = async (
-  base64Frame: string
-): Promise<{
-  isCompliant: boolean;
-  status: "VALID" | "ADJUSTING" | "INVALID";
-  feedback: string;
-  instruction: string;
-  faceDetected: boolean;
-}> => {
-  try {
-    const response = await fetch("/api/gemini/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ base64Frame })
-    });
+export interface AIModelSelectionResult {
+  model: string;
+  isComplex: boolean;
+  reason: string;
+}
 
-    if (!response.ok) {
-      if (response.status === 403) throw new Error("PERMISSION_DENIED");
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || "SERVER_ERROR");
-    }
+const SIMPLE_MODEL = 'gemini-3.1-flash-image';
+const COMPLEX_MODEL = 'gemini-3-pro-image';
 
-    return await response.json();
-  } catch (err: any) {
-    console.error("AI Analysis Error:", err);
-    if (err.message === "PERMISSION_DENIED") throw err;
+export const determineAIModel = (
+  clothingPrompt: string | undefined,
+  beauty: BeautySettings,
+  customAiPrompt: string | undefined
+): AIModelSelectionResult => {
+  const safeBeauty = beauty || ({} as BeautySettings);
+  const hasClothing = Boolean(clothingPrompt && clothingPrompt.trim().length > 0);
+  const hasRestoration =
+    (safeBeauty.restorationIntensity || 0) > 0 ||
+    (safeBeauty.colorizeIntensity || 0) > 0 ||
+    (safeBeauty.sharpenIntensity || 0) > 0;
+  const hasMakeup =
+    (safeBeauty.smoothSkin || 0) > 0 ||
+    (safeBeauty.blemishIntensity || 0) > 0 ||
+    (safeBeauty.lipstickIntensity || 0) > 0 ||
+    (safeBeauty.blushIntensity || 0) > 0 ||
+    (safeBeauty.eyebrowIntensity || 0) > 0 ||
+    (safeBeauty.eyelashIntensity || 0) > 0 ||
+    (safeBeauty.contourIntensity || 0) > 0;
+  const hasHairEdit =
+    (safeBeauty.hairVolume || 0) > 0 ||
+    (safeBeauty.hairColor && safeBeauty.hairColor !== 'original');
+  const hasCustomPrompt = Boolean(customAiPrompt && customAiPrompt.trim().length > 0);
+
+  const isComplex = hasClothing || hasRestoration || hasMakeup || hasHairEdit || hasCustomPrompt;
+
+  if (!isComplex) {
     return {
-      isCompliant: true,
-      status: "VALID",
-      feedback: "Offline mode",
-      instruction: "Ready",
-      faceDetected: true
+      model: SIMPLE_MODEL,
+      isComplex: false,
+      reason: `Dùng model ${SIMPLE_MODEL} xử lý nhanh phông nền`
     };
   }
+
+  const reasons: string[] = [];
+  if (hasRestoration) reasons.push("phục hồi/tô màu/làm nét ảnh cũ");
+  if (hasClothing) reasons.push("thay trang phục");
+  if (hasMakeup) reasons.push("trang điểm AI");
+  if (hasHairEdit) reasons.push("chỉnh sửa tóc");
+  if (hasCustomPrompt) reasons.push("yêu cầu tùy chỉnh");
+
+  return {
+    model: COMPLEX_MODEL,
+    isComplex: true,
+    reason: `Dùng model chuyên nghiệp ${COMPLEX_MODEL} do tác vụ phức tạp (${reasons.join(", ")})`
+  };
 };
 
 /* ======================================================
-   2️⃣ PROCESS ID PHOTO (IMAGE OUTPUT)
+   PROCESS ID PHOTO (IMAGE OUTPUT)
 ====================================================== */
 export const processIDPhoto = async (
   imageBase64: string,
@@ -52,6 +77,8 @@ export const processIDPhoto = async (
   customColor?: string,
   customAiPrompt?: string
 ): Promise<string> => {
+  const { model: targetModel } = determineAIModel(clothingPrompt, beauty, customAiPrompt);
+
   try {
     const response = await fetch("/api/gemini/process", {
       method: "POST",
@@ -63,7 +90,8 @@ export const processIDPhoto = async (
         beauty,
         size,
         customColor,
-        customAiPrompt
+        customAiPrompt,
+        model: targetModel
       })
     });
 

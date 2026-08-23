@@ -1,6 +1,5 @@
 
 import React, { useState } from 'react';
-import StartScreen from './StartScreen';
 import CameraCapture from './CameraCapture';
 import ImageEditor from './ImageEditor';
 import PrintPreview from './PrintPreview';
@@ -14,7 +13,7 @@ interface PhotoBoothProps {
 }
 
 const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, onHome, config }) => {
-  const [step, setStep] = useState<AppStep>(initialPhoto ? AppStep.PRINT : AppStep.CONFIG);
+  const [step, setStep] = useState<AppStep>(initialPhoto ? AppStep.PRINT : AppStep.CAPTURE);
   
   const [capturedImage, setCapturedImage] = useState<string>(initialPhoto ? initialPhoto.dataUrl : '');
   const [processedImage, setProcessedImage] = useState<string>(initialPhoto ? initialPhoto.dataUrl : '');
@@ -55,16 +54,6 @@ const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, 
     phoneNumber: config.contactZalo 
   });
 
-  const handleStartConfig = (userChoice: { size: PhotoSize; background: BackgroundType; quantity: number }) => {
-    setSettings(prev => ({
-      ...prev,
-      size: userChoice.size,
-      background: userChoice.background,
-      printQuantity: userChoice.quantity
-    }));
-    setStep(AppStep.CAPTURE);
-  };
-
   const handleCapture = (imageSrc: string) => {
     setCapturedImage(imageSrc);
     setStep(AppStep.EDIT);
@@ -77,7 +66,7 @@ const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, 
   const resetFlow = () => {
     setCapturedImage('');
     setProcessedImage('');
-    setStep(AppStep.CONFIG); 
+    setStep(AppStep.CAPTURE);
   };
 
   const handleRetake = () => {
@@ -87,19 +76,12 @@ const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, 
 
   return (
     <div className="h-full w-full">
-      {step === AppStep.CONFIG && (
-        <StartScreen 
-          onStart={handleStartConfig} 
-          onHome={onHome} 
-          config={config} 
-        />
-      )}
-
       {step === AppStep.CAPTURE && (
-        <CameraCapture 
+        <CameraCapture
           onCapture={handleCapture}
           selectedSize={settings.size}
           onSizeChange={(s) => setSettings({...settings, size: s})}
+          onHome={onHome}
         />
       )}
       

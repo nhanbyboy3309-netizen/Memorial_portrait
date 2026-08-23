@@ -4,6 +4,9 @@
  * Dành cho Google Apps Script
  */
 
+// Optional: ID thư mục Google Drive để lưu ảnh (để trống = lưu vào My Drive gốc)
+var DRIVE_FOLDER_ID = "";
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.tryLock(10000); // Đợi tối đa 10 giây
@@ -59,27 +62,77 @@ function initSheets() {
   }
 }
 
+// Upload ảnh base64 (data:image/...;base64,....) lên Google Drive và trả về link xem trực tiếp.
+// Sheet chỉ giới hạn 50.000 ký tự/ô — ảnh base64 (nhất là ảnh 20x30 độ phân giải cao) rất dễ
+// vượt giới hạn này, gây lỗi "Unexpected error ... getValues on object Range" khi đọc lại.
+function uploadDataUrlToDrive(dataUrl, fileName) {
+  var splitBase64 = dataUrl.split(',');
+  var dataPart = splitBase64.length > 1 ? splitBase64[1] : splitBase64[0];
+  var bytes = Utilities.base64Decode(dataPart);
+  var blob = Utilities.newBlob(bytes, 'image/png', fileName || 'photo.png');
+
+  var folder;
+  if (DRIVE_FOLDER_ID && DRIVE_FOLDER_ID.trim() !== '') {
+    try {
+      folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    } catch (e) {
+      folder = DriveApp.getRootFolder();
+    }
+  } else {
+    folder = DriveApp.getRootFolder();
+  }
+
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return {
+    url: "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w4000",
+    fileId: file.getId()
+  };
+}
+
+// Xoá file Drive cũ (nếu có) khi ghi đè cùng 1 ID, tránh rác Drive.
+function deleteDriveFileIfLinked(storedValue) {
+  if (!storedValue || typeof storedValue !== 'string') return;
+  var match = storedValue.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (!match) return;
+  try {
+    DriveApp.getFileById(match[1]).setTrashed(true);
+  } catch (e) {
+    // File đã bị xoá trước đó hoặc không có quyền — bỏ qua.
+  }
+}
+
 function savePhoto(data) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Photos');
   var id = data.id || ('IMG_' + new Date().getTime());
-  
+
   // Xóa ảnh cũ nếu trùng ID (để tránh rác khi chụp lại trên mobile)
   var rows = sheet.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] == id) {
+      deleteDriveFileIfLinked(rows[i][2]);
       sheet.deleteRow(i + 1);
       break;
     }
   }
 
+  // Nếu là ảnh base64 thô, upload lên Drive và chỉ lưu link vào Sheet.
+  // Nếu client gửi sẵn 1 URL (đã upload trước đó), giữ nguyên.
+  var storedUrl = data.dataUrl;
+  if (typeof storedUrl === 'string' && storedUrl.indexOf('data:') === 0) {
+    var uploadResult = uploadDataUrlToDrive(storedUrl, id + '.png');
+    storedUrl = uploadResult.url;
+  }
+
   sheet.appendRow([
     id,
     data.timestamp || new Date().getTime(),
-    data.dataUrl,
+    storedUrl,
     JSON.stringify(data.settings)
   ]);
-  
+
   return { success: true, id: id };
 }
 

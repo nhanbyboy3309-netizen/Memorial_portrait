@@ -6,6 +6,7 @@ import { t } from '../services/i18n';
 interface PrintSidebarProps {
   photoId: string | null;
   isSaving: boolean;
+  saveError?: boolean;
   sheetImages: string[];
   qrUrl: string;
   settings: PhotoSettings;
@@ -16,7 +17,7 @@ interface PrintSidebarProps {
 }
 
 const PrintSidebar: React.FC<PrintSidebarProps> = ({
-  photoId, isSaving, sheetImages, qrUrl, settings, config, onPrint, onDownload, onHome
+  photoId, isSaving, saveError, sheetImages, qrUrl, settings, config, onPrint, onDownload, onHome
 }) => {
   return (
     <div className="w-full md:w-80 bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl shadow-xl flex flex-col gap-4 md:gap-6 md:h-fit md:sticky md:top-6">
@@ -55,9 +56,13 @@ const PrintSidebar: React.FC<PrintSidebarProps> = ({
         <div className="bg-slate-50 dark:bg-gray-700 border border-slate-200 dark:border-gray-600 rounded-xl p-3 text-center flex flex-row md:flex-col items-center justify-between md:justify-center gap-4">
            <div className="text-left md:text-center">
                <h3 className="font-bold text-gray-800 dark:text-white mb-1 text-xs uppercase tracking-wider">{t('print.qr.title', config)}</h3>
-               <p className="text-[10px] text-gray-500 dark:text-gray-400">ID: {photoId?.slice(0,8)}...</p>
+               {saveError ? (
+                 <p className="text-[10px] text-red-500 dark:text-red-400 font-bold max-w-[140px] md:max-w-none">Lưu online thất bại. Vẫn có thể in/tải ảnh về máy.</p>
+               ) : (
+                 <p className="text-[10px] text-gray-500 dark:text-gray-400">ID: {photoId?.slice(0,8)}...</p>
+               )}
            </div>
-           
+
            {qrUrl ? (
                <div className="relative w-16 h-16 md:w-28 md:h-28">
                    <img src={qrUrl} alt="QR" className="w-full h-full mix-blend-multiply dark:mix-blend-normal dark:bg-white dark:p-1 dark:rounded-lg" />
@@ -67,6 +72,8 @@ const PrintSidebar: React.FC<PrintSidebarProps> = ({
                         </div>
                     )}
                </div>
+           ) : saveError ? (
+               <div className="w-16 h-16 md:w-28 md:h-28 flex items-center justify-center text-2xl text-red-400 bg-red-50 dark:bg-red-900/20 rounded">⚠️</div>
            ) : (
                <div className="w-16 h-16 md:w-28 md:h-28 flex items-center justify-center text-xs text-gray-400 bg-gray-100 dark:bg-gray-600 rounded">...</div>
            )}

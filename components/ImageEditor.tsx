@@ -44,6 +44,22 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [sliderPosition, setSliderPosition] = useState(50);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollTabsLeft, setCanScrollTabsLeft] = useState(false);
+  const [canScrollTabsRight, setCanScrollTabsRight] = useState(false);
+
+  const updateTabScrollEdges = useCallback(() => {
+    const el = tabScrollRef.current;
+    if (!el) return;
+    setCanScrollTabsLeft(el.scrollLeft > 4);
+    setCanScrollTabsRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateTabScrollEdges();
+    window.addEventListener('resize', updateTabScrollEdges);
+    return () => window.removeEventListener('resize', updateTabScrollEdges);
+  }, [updateTabScrollEdges]);
 
   // Edit History State
   const [editHistory, setEditHistory] = useState<HistoryItem[]>([]);
@@ -67,21 +83,33 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     });
   }, []);
 
+  // Baseline hash for "nothing AI-related has been requested yet" — built from the
+  // SAME shape as getAiSettingsHash (just with every AI-affecting field neutralized)
+  // so the two can never silently drift apart again. They previously had different
+  // key sets (this one was missing "makeup"), which made hasPendingAiChanges report
+  // true on every freshly loaded photo even before the user touched anything.
   const getRawStateHash = useCallback(() => {
-     return JSON.stringify({
-       background: settings.background, 
-       customBg: settings.customBackgroundColor,
-       cloth: undefined,
-       customPrompt: undefined,
-       blemish: 0,
-       smooth: 0,
-       restore: 0,
-       colorize: 0,
-       sharpen: 0,
-       gender: undefined,
-       age: undefined
+     return getAiSettingsHash({
+       ...settings,
+       clothingPrompt: undefined,
+       customAiPrompt: undefined,
+       beauty: {
+         ...settings.beauty,
+         blemishIntensity: 0,
+         smoothSkin: 0,
+         restorationIntensity: 0,
+         colorizeIntensity: 0,
+         sharpenIntensity: 0,
+         restorationGender: undefined,
+         restorationAge: undefined,
+         lipstickIntensity: 0,
+         blushIntensity: 0,
+         eyebrowIntensity: 0,
+         eyelashIntensity: 0,
+         contourIntensity: 0,
+       }
      });
-  }, [settings.background, settings.customBackgroundColor]);
+  }, [settings, getAiSettingsHash]);
 
   const [appliedHash, setAppliedHash] = useState<string>(getRawStateHash());
 
@@ -222,36 +250,49 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         </div>
 
         {/* Improved Tabs Navigation - Compact */}
-        <div className="px-2 md:px-4 py-2 md:py-3 shrink-0 border-b border-slate-50 dark:border-slate-800 overflow-x-auto scrollbar-hide">
-          <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl gap-1 min-w-max">
-            {[
-              {id: 'crop', label: 'Cắt', icon: '✂️'},
-              {id: 'background', label: 'Nền', icon: '🖼️'},
-              {id: 'restoration', label: 'Cũ', icon: '🕰️'},
-              {id: 'clothing', label: 'Áo', icon: '👔'},
-              {id: 'makeup', label: 'Makeup', icon: '✨'},
-              {id: 'beauty', label: 'Filter', icon: '🎨'},
-              {id: 'info', label: 'Info', icon: '📝'}
-            ].map((tab) => {
-               const isActive = activeTab === tab.id;
-               return (
-                  <button 
-                    key={tab.id} 
-                    onClick={() => tab.id === 'crop' ? startCrop() : setActiveTab(tab.id as any)} 
-                    className={`flex flex-col items-center justify-center min-w-[50px] md:min-w-[55px] py-1.5 md:py-2 rounded-xl transition-all duration-500 relative ${
-                       isActive && tab.id !== 'crop'
-                       ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-[0_10px_20px_-5px_rgba(37,99,235,0.15)] scale-110 z-10' 
-                       : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    <span className="text-base md:text-lg mb-0.5">{tab.icon}</span>
-                    <span className="text-[7px] md:text-[8px] font-black uppercase tracking-tighter">
-                       {tab.label}
-                    </span>
-                  </button>
-               );
-            })}
+        <div className="relative px-2 md:px-4 py-2 md:py-3 shrink-0 border-b border-slate-50 dark:border-slate-800">
+          <div
+            ref={tabScrollRef}
+            onScroll={updateTabScrollEdges}
+            className="flex overflow-x-auto scrollbar-hide"
+          >
+            <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl gap-1 min-w-max">
+              {[
+                {id: 'crop', label: 'Cắt', icon: '✂️'},
+                {id: 'background', label: 'Nền', icon: '🖼️'},
+                {id: 'restoration', label: 'Cũ', icon: '🕰️'},
+                {id: 'clothing', label: 'Áo', icon: '👔'},
+                {id: 'makeup', label: 'Makeup', icon: '✨'},
+                {id: 'beauty', label: 'Filter', icon: '🎨'},
+                {id: 'info', label: 'Info', icon: '📝'}
+              ].map((tab) => {
+                 const isActive = activeTab === tab.id;
+                 return (
+                    <button
+                      key={tab.id}
+                      onClick={() => tab.id === 'crop' ? startCrop() : setActiveTab(tab.id as any)}
+                      className={`flex flex-col items-center justify-center min-w-[50px] md:min-w-[55px] py-1.5 md:py-2 rounded-xl transition-all duration-500 relative ${
+                         isActive && tab.id !== 'crop'
+                         ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-[0_10px_20px_-5px_rgba(37,99,235,0.15)] scale-110 z-10'
+                         : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      <span className="text-base md:text-lg mb-0.5">{tab.icon}</span>
+                      <span className="text-[7px] md:text-[8px] font-black uppercase tracking-tighter">
+                         {tab.label}
+                      </span>
+                    </button>
+                 );
+              })}
+            </div>
           </div>
+          {/* Scroll hints: fade edges when there are more tabs offscreen */}
+          {canScrollTabsLeft && (
+            <div className="pointer-events-none absolute left-2 md:left-4 top-2 md:top-3 bottom-2 md:bottom-3 w-6 bg-gradient-to-r from-white dark:from-slate-900 to-transparent" />
+          )}
+          {canScrollTabsRight && (
+            <div className="pointer-events-none absolute right-2 md:right-4 top-2 md:top-3 bottom-2 md:bottom-3 w-6 bg-gradient-to-l from-white dark:from-slate-900 to-transparent" />
+          )}
         </div>
 
         {/* Tab Content Area - Controlled Height */}

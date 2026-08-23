@@ -8,9 +8,10 @@ interface CameraCaptureProps {
   onCapture: (imageSrc: string) => void;
   selectedSize: PhotoSize;
   onSizeChange: (size: PhotoSize) => void;
+  onHome?: () => void;
 }
 
-const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, selectedSize, onSizeChange }) => {
+const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, selectedSize, onSizeChange, onHome }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMobileLink, setShowMobileLink] = React.useState(false);
   const config = React.useMemo(() => {
@@ -38,7 +39,16 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, selectedSize, 
 
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-gray-50 dark:bg-gray-900 relative select-none overflow-hidden touch-none py-safe items-center justify-center p-6">
-      
+
+      {onHome && (
+        <div className="absolute top-2 left-2 md:top-4 md:left-4 z-20">
+          <button onClick={onHome} className="px-3 py-2 md:px-4 md:py-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-xl font-bold hover:bg-white dark:hover:bg-gray-700 hover:text-brand-600 dark:hover:text-brand-400 transition flex items-center gap-2 shadow-sm text-sm">
+            <svg className="w-5 h-5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l-7 7m-7 7h18"></path></svg>
+            <span className="hidden sm:inline">{t('btn.home', config)}</span>
+          </button>
+        </div>
+      )}
+
       {showMobileLink && (
         <MobileCameraLink 
             config={config as AppConfig}

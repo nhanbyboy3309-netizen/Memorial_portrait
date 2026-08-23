@@ -24,6 +24,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
   processedImage, size, settings, onBack, onNew, onHome, config
 }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [realPhotoId, setRealPhotoId] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string>('');
   const [sheetImages, setSheetImages] = useState<string[]>([]);
@@ -247,13 +248,21 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
   };
 
   useEffect(() => {
-     if (!qrUrl) return; 
+     // Generate the printable sheets as soon as the photo is ready, regardless of
+     // whether the cloud save (below) has finished or even succeeded — this used
+     // to be gated on qrUrl, which only gets set after a successful cloud save,
+     // so a failed/slow cloud save left the whole print screen stuck on its
+     // loading spinner forever with no image to print or download.
      (async () => {
          try {
-             const [p, l, q] = await Promise.all([loadImage(processedImage), config.logoUrl ? loadImage(config.logoUrl).catch(() => null) : null, loadImage(qrUrl).catch(() => null)]);
-             
+             const [p, l, q] = await Promise.all([
+                 loadImage(processedImage),
+                 config.logoUrl ? loadImage(config.logoUrl).catch(() => null) : null,
+                 qrUrl ? loadImage(qrUrl).catch(() => null) : null
+             ]);
+
              // Generate Sheets
-             const sheets = []; 
+             const sheets = [];
              for (let i = 0; i < totalSheets; i++) sheets.push(await generateSheetCanvas(i, p, l, q));
              setSheetImages(sheets);
              setPrintImages(sheets);
@@ -264,17 +273,19 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
 
   useEffect(() => {
     (async () => {
-      setIsSaving(true); 
+      setIsSaving(true);
       const uniqueId = `IMG_${Date.now()}_${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
       const savedId = await savePhotoToCloud({ id: uniqueId, dataUrl: processedImage, timestamp: Date.now(), settings });
-      if (savedId) { 
-          setRealPhotoId(savedId); 
-          const v = `${window.location.href.split('?')[0]}?photoId=${savedId}`; 
-          setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(v)}&ecc=H`); 
+      if (savedId) {
+          setRealPhotoId(savedId);
+          const v = `${window.location.href.split('?')[0]}?photoId=${savedId}`;
+          setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(v)}&ecc=H`);
+      } else {
+          setSaveError(true);
       }
       setIsSaving(false);
     })();
-  }, []); 
+  }, []);
 
   const handleDownload = () => { sheetImages.forEach((d, i) => { const l = document.createElement('a'); l.href = d; l.download = `A4-Photo-Sheet-${i+1}.png`; l.click(); }); };
 
@@ -297,9 +308,10 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
         
         {/* Controls Area (Stacked at bottom on mobile) */}
         <div className="w-full md:w-80 shrink-0">
-            <PrintSidebar 
+            <PrintSidebar
                 photoId={realPhotoId}
                 isSaving={isSaving}
+                saveError={saveError}
                 sheetImages={sheetImages}
                 qrUrl={qrUrl}
                 settings={settings}

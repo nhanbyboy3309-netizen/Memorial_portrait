@@ -10,18 +10,41 @@ interface ManualCropperProps {
   onConfirm: (croppedImage: string) => void;
 }
 
+const RATIO_PRESETS = [
+  { id: 'free', label: 'Tự do', value: null as number | null },
+  { id: '1:1', label: '1:1', value: 1 },
+  { id: '3:4', label: '3:4', value: 3 / 4 },
+  { id: '2:3', label: '2:3 (20x30)', value: 2 / 3 },
+];
+
 const ManualCropper: React.FC<ManualCropperProps> = ({ imageSrc, photoSize, onCancel, onConfirm }) => {
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  
+  const [ratioId, setRatioId] = useState('2:3');
+  const [naturalRatio, setNaturalRatio] = useState(2 / 3);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // FORCE ASPECT RATIO 20x30 (2:3)
-  const ASPECT_RATIO = 2 / 3;
+  // Chosen ratio, or the photo's own ratio when "Tự do" (free) is picked
+  const selectedPreset = RATIO_PRESETS.find(r => r.id === ratioId) || RATIO_PRESETS[3];
+  const ASPECT_RATIO = selectedPreset.value ?? naturalRatio;
+
+  const handleImageLoad = () => {
+    if (imgRef.current) {
+      const { naturalWidth, naturalHeight } = imgRef.current;
+      if (naturalWidth && naturalHeight) setNaturalRatio(naturalWidth / naturalHeight);
+    }
+  };
+
+  const handleRatioChange = (id: string) => {
+    setRatioId(id);
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+  };
 
   // --- MOUSE / TOUCH EVENTS FOR PANNING ---
   const handleStart = (clientX: number, clientY: number) => {
@@ -68,10 +91,12 @@ const ManualCropper: React.FC<ManualCropperProps> = ({ imageSrc, photoSize, onCa
     if (!cropBox) return;
 
     // Target Output Resolution (High Quality for Printing)
-    // 20x30cm at 300dpi is approx 2300x3500px. 
-    // We use a standardized high res target.
-    const targetHeight = 3000; 
-    const targetWidth = targetHeight * ASPECT_RATIO; // 2000px
+    // 20x30cm at 300dpi is approx 2300x3500px.
+    // We use a standardized high res target, capping the long edge at 3000px
+    // regardless of ratio so very wide/tall "Tự do" crops stay a sane canvas size.
+    const LONG_EDGE = 3000;
+    const targetWidth = ASPECT_RATIO >= 1 ? LONG_EDGE : Math.round(LONG_EDGE * ASPECT_RATIO);
+    const targetHeight = ASPECT_RATIO >= 1 ? Math.round(LONG_EDGE / ASPECT_RATIO) : LONG_EDGE;
 
     canvas.width = targetWidth;
     canvas.height = targetHeight;
@@ -134,7 +159,7 @@ const ManualCropper: React.FC<ManualCropperProps> = ({ imageSrc, photoSize, onCa
         </button>
         <div className="flex flex-col items-center">
             <span className="text-white font-black uppercase text-sm tracking-widest">CẮT ẢNH</span>
-            <span className="text-[10px] text-brand-400 font-bold">KHỔ 20x30 (2:3)</span>
+            <span className="text-[10px] text-brand-400 font-bold">TỶ LỆ {selectedPreset.label.toUpperCase()}</span>
         </div>
         <button onClick={handleCrop} className="text-white font-bold text-sm px-6 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 shadow-lg shadow-brand-500/30">
           Xong
@@ -154,20 +179,22 @@ const ManualCropper: React.FC<ManualCropperProps> = ({ imageSrc, photoSize, onCa
         onTouchEnd={handleEnd}
       >
         {/* The Image (Transformed) */}
-        <img 
+        <img
           ref={imgRef}
-          src={imageSrc} 
+          src={imageSrc}
           alt="Source"
+          crossOrigin="anonymous"
           className="absolute max-w-none origin-center pointer-events-none select-none transition-transform duration-75 ease-linear"
-          style={{ 
+          style={{
             // CSS Transform Order must match Canvas Logic order
             transform: `translate(${offset.x}px, ${offset.y}px) rotate(${rotation}deg) scale(${zoom})`,
             height: 'auto',
-            maxHeight: '85%', 
+            maxHeight: '85%',
             maxWidth: '85%',
             imageRendering: 'auto'
           }}
           draggable={false}
+          onLoad={handleImageLoad}
         />
 
         {/* The Crop Box (Overlay) */}
@@ -204,7 +231,24 @@ const ManualCropper: React.FC<ManualCropperProps> = ({ imageSrc, photoSize, onCa
 
       {/* Footer Controls */}
       <div className="shrink-0 bg-gray-900 px-6 py-4 pb-safe border-t border-white/10 z-50 space-y-5">
-         
+
+         {/* Aspect Ratio Selector */}
+         <div className="max-w-md mx-auto flex gap-2 justify-center">
+            {RATIO_PRESETS.map(preset => (
+               <button
+                  key={preset.id}
+                  onClick={() => handleRatioChange(preset.id)}
+                  className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                     ratioId === preset.id
+                     ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/30'
+                     : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                  }`}
+               >
+                  {preset.label}
+               </button>
+            ))}
+         </div>
+
          {/* Rotation Controls */}
          <div className="max-w-md mx-auto space-y-2">
             <div className="flex justify-between items-center text-xs font-bold text-gray-400 uppercase tracking-wider">

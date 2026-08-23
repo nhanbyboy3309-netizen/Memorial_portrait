@@ -16,8 +16,7 @@ export enum BackgroundType {
 }
 
 export enum AppStep {
-  CONFIG = 'config', 
-  CAPTURE = 'capture', 
+  CAPTURE = 'capture',
   EDIT = 'edit',
   PRINT = 'print'
 }

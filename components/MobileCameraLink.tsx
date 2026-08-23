@@ -111,7 +111,7 @@ const MobileCameraLink: React.FC<MobileCameraLinkProps> = ({ onPhotoReceived, on
         ) : (
             <>
                 <div className="mb-6 relative">
-                    <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase leading-tight">Kết nối Camera</h2>
+                    <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase leading-tight">Tải ảnh từ điện thoại</h2>
                     <div className="flex items-center justify-center gap-2 mt-2">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
@@ -140,7 +140,7 @@ const MobileCameraLink: React.FC<MobileCameraLinkProps> = ({ onPhotoReceived, on
 
                 <div className="space-y-3">
                     <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                        Quét mã bằng điện thoại để dùng camera ngoài. <br/>
+                        Quét mã bằng điện thoại để tải ảnh lên. <br/>
                         <span className="font-bold text-brand-600">ID: {sessionId}</span>
                     </p>
                     

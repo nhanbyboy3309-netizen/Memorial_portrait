@@ -2,14 +2,14 @@ import express from "express";
 import path from "path";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { BackgroundType, BeautySettings } from "./types";
 
 const clamp = (v: number, max = 30) => Math.min(Math.max(v, 0), max);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
   app.use(cors());
   app.use(express.json({ limit: "50mb" }));
@@ -34,65 +34,6 @@ async function startServer() {
     });
   };
 
-  const analysisSchema = {
-    type: Type.OBJECT,
-    properties: {
-      isCompliant: { type: Type.BOOLEAN },
-      status: { type: Type.STRING },
-      feedback: { type: Type.STRING },
-      instruction: { type: Type.STRING },
-      faceDetected: { type: Type.BOOLEAN }
-    },
-    required: ["isCompliant", "status", "feedback", "instruction", "faceDetected"]
-  };
-
-  app.post("/api/gemini/analyze", async (req, res) => {
-    try {
-      const { base64Frame } = req.body;
-      if (!base64Frame) return res.status(400).json({ error: "Missing image" });
-
-      const ai = getAI();
-      const cleanBase64 = base64Frame.replace(/^data:image\/\w+;base64,/, "");
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: "image/jpeg", data: cleanBase64 } },
-            { text: `
-You are an ID photo compliance inspector.
-
-Evaluate ONLY:
-- Face detected
-- Head centered & straight
-- Neutral expression
-- Lighting balance
-- Background neutrality
-
-No beautification.
-No assumptions.
-Return JSON strictly following schema.
-` }
-          ]
-        }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: analysisSchema
-        }
-      });
-
-      const raw = response.text;
-      if (!raw) throw new Error("Empty AI response");
-
-      const json = raw.replace(/```json|```/g, "").trim();
-      res.json(JSON.parse(json));
-    } catch (error: any) {
-      console.error("Analysis Error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   app.post("/api/gemini/process", async (req, res) => {
     try {
       const {
@@ -101,7 +42,8 @@ Return JSON strictly following schema.
         clothingPrompt,
         beauty,
         customColor,
-        customAiPrompt
+        customAiPrompt,
+        model
       }: {
         imageBase64: string;
         bgType: BackgroundType;
@@ -109,6 +51,7 @@ Return JSON strictly following schema.
         beauty: BeautySettings;
         customColor?: string;
         customAiPrompt?: string;
+        model?: string;
       } = req.body;
 
       if (!imageBase64) return res.status(400).json({ error: "Missing image" });
@@ -116,18 +59,35 @@ Return JSON strictly following schema.
       const ai = getAI();
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
-      /* ===== INTENSITY SAFE ===== */
-      const contour = clamp((beauty.contourIntensity / 100) * 50);
-      const blemish = clamp((beauty.blemishIntensity / 100) * 100);
-      const eyebrow = clamp((beauty.eyebrowIntensity / 100) * 500);
-      const eyelash = clamp((beauty.eyelashIntensity / 100) * 505);
-      const restore = clamp(beauty.restorationIntensity ?? 100);
-      const colorize = clamp(beauty.colorizeIntensity ?? 100);
-      const sharpen = clamp(beauty.sharpenIntensity ?? 100);
+      /* ===== INTENSITY SAFE =====
+         Each slider is 0-100 from the UI; scale linearly to the prompt's
+         target range (matching the "/N" labels below) instead of relying
+         on clamp()'s default max=30, which previously saturated eyebrow/
+         eyelash by ~6% input and silently capped restoration/colorize/
+         sharpen at 30 even when the user asked for up to 100. */
+      const smooth = clamp(beauty.smoothSkin, 100);
+      const contour = clamp((beauty.contourIntensity / 100) * 30, 30);
+      const blemish = clamp(beauty.blemishIntensity, 100);
+      const eyebrow = clamp((beauty.eyebrowIntensity / 100) * 30, 30);
+      const eyelash = clamp((beauty.eyelashIntensity / 100) * 25, 25);
+      const restore = clamp(beauty.restorationIntensity ?? 100, 100);
+      const colorize = clamp(beauty.colorizeIntensity ?? 100, 100);
+      const sharpen = clamp(beauty.sharpenIntensity ?? 100, 100);
 
       const lipstick = beauty.lipstickColor !== 'none' ? `${beauty.lipstickColor} (Intensity: ${beauty.lipstickIntensity}%)` : 'None';
       const blush = beauty.blushColor !== 'none' ? `${beauty.blushColor} (Intensity: ${beauty.blushIntensity}%)` : 'None';
-      const hair = beauty.hairColor !== 'original' ? `${beauty.hairColor} (Volume/Intensity: ${beauty.hairVolume}%)` : 'Original';
+      // hairColor is undefined until the user explicitly picks one (see PhotoBooth.tsx defaults),
+      // so this must not fall into the "changed" branch on undefined — that previously rendered
+      // the literal text "undefined" into the prompt for every photo that never touched hair color.
+      const hair = (beauty.hairColor && beauty.hairColor !== 'original') ? `${beauty.hairColor} (Volume/Intensity: ${beauty.hairVolume}%)` : 'Original';
+
+      const AGE_LABELS: Record<string, string> = {
+        baby: 'infant/young child', child: 'child', young: 'young adult',
+        middle: 'middle-aged adult', old: 'elderly'
+      };
+      const demographicHint = (beauty.restorationGender || beauty.restorationAge)
+        ? `Subject reference: ${beauty.restorationGender || 'unspecified gender'}, ${AGE_LABELS[beauty.restorationAge || ''] || 'unspecified age'}. Use this ONLY to keep any reconstructed hair/clothing/skin-tone period- and demographic-appropriate when repairing damaged or missing regions — never to alter visible facial features or true identity.`
+        : '';
 
       /* ===== BACKGROUND RULE ===== */
       let bgRule = "Do NOT modify background.";
@@ -141,165 +101,38 @@ Return JSON strictly following schema.
         bgRule = `Set background color to HEX ${customColor}, flat, uniform.`;
       }
 
-      const systemPrompt = `
-YOU ARE A PROFESSIONAL Memorial portrait PROCESSOR.
+      const systemPrompt = `ROLE: Professional old-photo restoration AI for memorial and keepsake portraits (ảnh thờ, ảnh kỷ niệm). Priority 1 (never violate): preserve the subject's identity exactly, especially on damaged or low-quality source photos. Priority 2: apply the requested restoration and beautification fully and well — do not under-apply it out of excess caution.
 
-================ ABSOLUTE IDENTITY RULES ================
-- Preserve identity at all costs.
-- Facial proportions must remain visually identical.
-- NO face reshaping, slimming, widening, lifting.
-- NO new moles, freckles, dots, pigmentation.
-- DO NOT remove permanent marks.
-- If any operation risks identity → SKIP IT.
+IDENTITY LOCK — hard rule, always: face shape, bone structure, proportions, and the exact position/size/shape of eyes, nose, mouth, eyebrows, and ears must stay identical to the original. No reshaping, resizing, or repositioning of any facial feature. Never add or remove moles, freckles, scars, or birthmarks. Never invent skin texture, wrinkles, or interpret film grain/scan noise/damage as facial features. Always compare against the original image; do not re-detect or reinterpret geometry. If no face is found, or it is too damaged to identify, output the original image unchanged.
+${demographicHint}
 
-================ STEP 0 – IMAGE SCAN & TECHNICAL ANALYSIS (MANDATORY) ================
+CONDITION-AWARE RESTORATION — first judge the photo's actual physical condition (clean digital photo vs. faded/scratched/blurry/noisy print scan); the intensities below are a CEILING, not a target:
+- Already clean, modern, high-quality photo → skip restoration, colorization, and sharpening entirely, regardless of the requested intensity.
+- Lightly worn (minor fading/blur/noise) → restore correctively, well under the requested intensity.
+- Heavily damaged (torn, faded, heavy noise/blur) → restore correctively and non-generatively only — repair existing detail, never invent new detail; cap at the requested intensity.
+- Colorize ONLY if the source is grayscale/monochrome; skip entirely if it is already in color.
+- Skip sharpening if it would create dot-like or grainy artifacts on skin.
+- If the face is not clearly visible, skip makeup operations.
 
-BEFORE performing ANY modification, you MUST execute a full, non-destructive
-technical analysis of the ENTIRE input image.
+ALLOWED — cosmetic surface edits (color/texture only, never geometry; this IS the requested restoration/beautification, apply it at the given intensity subject to the condition caps above, not just minimally):
+- Restoration ${restore}/100, Colorization ${colorize}/100, Sharpen ${sharpen}/100 (see condition-aware caps above).
+- Skin: smoothing ${smooth}/100, blemish cleanup ${blemish}/100 — subtractive retouching of existing texture, preserve identity marks, no new texture/pores.
+- Makeup: lipstick=${lipstick}; blush=${blush}; contour (shading only) ${contour}/30; eyebrow ${eyebrow}/30; eyelash ${eyelash}/25 — pixel overlay only, follow the existing shape exactly, subtle and natural, no glam bias.
+- Hair: tidy/recolor the existing hairstyle only, color/style=${hair}. Do not invent a new hairstyle; keep natural texture.
+- Background: ${bgRule} Flat, uniform, no texture/noise, clean edge, no halo.
+- Clothing: ${clothingPrompt ? `replace with "${clothingPrompt}"` : "do NOT change clothing"} — edit strictly below the neck; must not alter neck, shoulders, or posture.
 
-THIS STEP IS ANALYSIS-ONLY.
-NO pixel modification is allowed in this step.
+${customAiPrompt ? `SPECIAL INSTRUCTIONS (user-provided) — perform ONLY if they do not violate the identity-lock rules above: "${customAiPrompt}"` : ''}
 
----------------- ANALYSIS OBJECTIVES ----------------
-Analyze and internally record the following attributes:
+OUTPUT: PNG, high quality, base64, no text, no metadata, no explanation.`;
 
-1. IMAGE ORIGIN
-- Native digital photo
-- Scanned printed photo
-- Photograph of a printed photo
-- Screenshot or compressed image
-
-2. TECHNICAL QUALITY
-- Resolution adequacy (sufficient / low / very low)
-- Global sharpness (sharp / mildly blurred / heavily blurred)
-- Motion blur presence (none / slight / strong)
-- Noise level (none / low / medium / high)
-- Compression artifacts (none / mild / heavy)
-- Color condition:
-  - Full color
-  - Faded color
-  - Grayscale / black & white
-
-3. LIGHTING & EXPOSURE
-- Overall exposure (balanced / underexposed / overexposed)
-- Shadow severity on face (none / mild / strong)
-- Highlight clipping (none / mild / severe)
-- Color cast presence (none / warm / cool / mixed)
-
-4. FACE & SUBJECT DETECTION (OBSERVATION ONLY)
-- Face detected: yes / no
-- Face clarity: clear / partially unclear / unclear
-- Occlusion: none / hair / glasses / shadow / other
-- Expression: neutral / non-neutral
-- Head pose: straight / slightly rotated / invalid for ID
-
-IMPORTANT:
-- Do NOT perform facial landmark detection.
-- Do NOT estimate attractiveness, age, or emotion.
-- Do NOT normalize, align, rotate, or crop.
-
----------------- DEGRADATION CLASSIFICATION ----------------
-Based on the analysis, internally classify image degradation:
-
-- LEVEL 0: Clean, modern, high-quality image
-- LEVEL 1: Minor degradation
-- LEVEL 2: Moderate degradation
-- LEVEL 3: Severe degradation
-
----------------- DECISION GATES (CRITICAL) ----------------
-Use the analysis results STRICTLY as CONDITIONS for later steps:
-
-- If LEVEL 0:
-  → ALL restoration, colorization, and sharpening MUST be SKIPPED.
-
-- If LEVEL 1:
-  → Restoration allowed with intensity ≤ 10 only.
-
-- If LEVEL 2:
-  → Restoration allowed with intensity ≤ 20 only.
-
-- If LEVEL 3:
-  → Restoration allowed with intensity ≤ 30,
-    corrective only, NON-GENERATIVE.
-
-- If face clarity is NOT "clear":
-  → Makeup operations MUST be SKIPPED.
-
-- If image is already full color:
-  → Colorization MUST be SKIPPED.
-
-- If sharpening risks creating dot-like artifacts on skin:
-  → Sharpening MUST be SKIPPED.
-
----------------- FAIL-SAFE DEFAULT ----------------
-If analysis confidence is insufficient or ambiguous:
-→ Treat image as LEVEL 0
-→ SKIP ALL optional enhancement steps.
-
-This analysis step has ABSOLUTE PRIORITY.
-All subsequent steps MUST obey the conditions derived here.
-
-
-================ BACKGROUND =============================
-${bgRule}
-- Flat, uniform, no texture, no noise.
-- Clean edge, no halo.
-
-================ RESTORATION =============================
-Intensity: ${restore}/100
-- Corrective only (noise, blur, fade).
-- NON-GENERATIVE.
-- If unclear detail → leave unchanged.
-
-================ COLORIZATION ============================
-Intensity: ${colorize}/100
-- Only if image is grayscale.
-- Neutral Vietnamese skin tone.
-- No makeup during colorization.
-
-================ SHARPEN ================================
-Intensity: ${sharpen}/100
-- Edge clarity only.
-- If sharpening creates dot-like skin artifacts → SKIP.
-
-================ MAKEUP ================================
-Blemish clean: ${blemish}/100
-Contour: ${contour}/30
-Eyebrow: ${eyebrow}/30
-Eyelash: ${eyelash}/25
-Lipstick: ${lipstick}
-Blush: ${blush}
-Hair Color/Style: ${hair}
-
-Rules:
-- Makeup = pixel overlay only.
-- Follow existing shape exactly.
-- No glam, no beautification bias.
-- Lipstick should be subtle and natural unless intensity is high.
-- Blush should be soft and blended.
-- Hair color changes should look realistic and maintain texture.
-
-================ CLOTHING ================================
-${clothingPrompt ? `Replace clothing with: "${clothingPrompt}"` : "Do NOT change clothing"}
-- Must not alter neck, shoulders, posture.
-
-${customAiPrompt ? `
-================ SPECIAL INSTRUCTIONS (USER PROVIDED) ================
-The user has provided the following specific requests.
-Perform them ONLY IF they do not violate the Identity Preservation rules:
-"${customAiPrompt}"
-` : ""}
-
-================ OUTPUT ================================
-- Output ONLY the final image.
-- PNG, high quality, base64.
-- No text, no metadata.
-`;
+      const targetModel = model || "gemini-3.1-flash-image";
+      console.log(`[Gemini Process] Running image generation with model: ${targetModel}`);
 
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-image-preview",
+          model: targetModel,
           contents: [{
             role: "user",
             parts: [
@@ -310,8 +143,8 @@ Perform them ONLY IF they do not violate the Identity Preservation rules:
         });
       } catch (firstErr: any) {
         const msg = JSON.stringify(firstErr);
-        if (msg.includes("403") || msg.includes("404")) {
-          console.warn("Falling back to gemini-2.5-flash-image");
+        if ((msg.includes("403") || msg.includes("404")) && targetModel !== "gemini-2.5-flash-image") {
+          console.warn(`Model ${targetModel} unavailable, falling back to gemini-2.5-flash-image`);
           response = await ai.models.generateContent({
             model: "gemini-2.5-flash-image",
             contents: [{
