@@ -59,7 +59,7 @@ const PrintSidebar: React.FC<PrintSidebarProps> = ({
                {saveError ? (
                  <p className="text-[10px] text-red-500 dark:text-red-400 font-bold max-w-[140px] md:max-w-none">Lưu online thất bại. Vẫn có thể in/tải ảnh về máy.</p>
                ) : (
-                 <p className="text-[10px] text-gray-500 dark:text-gray-400">ID: {photoId?.slice(0,8)}...</p>
+                 <p className="text-[10px] text-gray-500 dark:text-gray-400">ID: {photoId}</p>
                )}
            </div>
 

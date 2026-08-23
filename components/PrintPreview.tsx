@@ -75,8 +75,10 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
             
             ctx.drawImage(photoImg, photoX, photoY, photoW, photoH);
             ctx.restore();
-            
+
             // === FOOTER LOGIC (Overlay on Photo) ===
+            if (config.showPrintQrFooter === false) return canvas.toDataURL('image/png');
+
             const hasCustomInfo = settings.info?.enabled && settings.info?.text?.trim().length > 0;
             const footerHeightMM = hasCustomInfo ? 30 : 20; 
             const footerHeightPx = footerHeightMM * MM_TO_PX;
@@ -274,7 +276,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
   useEffect(() => {
     (async () => {
       setIsSaving(true);
-      const uniqueId = `IMG_${Date.now()}_${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      const uniqueId = `${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`.toUpperCase();
       const savedId = await savePhotoToCloud({ id: uniqueId, dataUrl: processedImage, timestamp: Date.now(), settings });
       if (savedId) {
           setRealPhotoId(savedId);

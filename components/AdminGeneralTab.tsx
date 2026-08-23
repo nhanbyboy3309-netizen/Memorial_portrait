@@ -131,14 +131,35 @@ const AdminGeneralTab: React.FC<AdminGeneralTabProps> = ({ form, onChange }) => 
               />
             </InputGroup>
             <InputGroup label={t('admin.general.footer', form)} icon="📜">
-              <input 
-                type="text" 
-                value={form.printFooterText} 
-                onChange={e => onChange('printFooterText', e.target.value)} 
-                className={`${iconInputClass} bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-bold`} 
+              <input
+                type="text"
+                value={form.printFooterText}
+                onChange={e => onChange('printFooterText', e.target.value)}
+                className={`${iconInputClass} bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-bold`}
               />
             </InputGroup>
           </div>
+        </div>
+
+        <div className="mt-6 pt-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-gray-800 dark:text-white">Hiển thị logo + mã ảnh + QR trên ảnh in</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Khổ 20x30: dải thông tin cửa hàng, mã ảnh và mã QR ở góc dưới ảnh in.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange('showPrintQrFooter', !(form.showPrintQrFooter !== false))}
+            className={`relative shrink-0 w-12 h-7 rounded-full transition-colors duration-200 ${
+              form.showPrintQrFooter !== false ? 'bg-brand-600' : 'bg-gray-300 dark:bg-gray-600'
+            }`}
+            aria-pressed={form.showPrintQrFooter !== false}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-200 ${
+                form.showPrintQrFooter !== false ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
         </div>
       </div>
     </div>

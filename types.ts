@@ -145,6 +145,8 @@ export interface AppConfig {
   customContentBgColor?: string;
   customContentTextColor?: string;
   customContentSize?: 'sm' | 'md' | 'lg';
-  customContentImageUrl?: string; 
-  customContentLinkUrl?: string;  
+  customContentImageUrl?: string;
+  customContentLinkUrl?: string;
+
+  showPrintQrFooter?: boolean; // Bật/tắt phần logo + mã ảnh + QR in trên ảnh 20x30
 }

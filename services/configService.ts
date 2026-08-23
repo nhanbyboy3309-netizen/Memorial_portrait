@@ -84,7 +84,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   customContentHtml: "<div class='text-center'><p><b>HƯỚNG DẪN</b></p><p>Hệ thống chuyên dụng phục hồi ảnh cũ, ảnh mờ, ảnh ố vàng.</p></div>",
   customContentBgColor: "#f1f5f9",
   customContentTextColor: "#475569",
-  customContentSize: 'md'
+  customContentSize: 'md',
+
+  showPrintQrFooter: true
 };
 
 export const saveConfig = (config: AppConfig) => {
