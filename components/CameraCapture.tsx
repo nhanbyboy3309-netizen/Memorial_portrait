@@ -55,7 +55,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, selectedSize, 
 
       <div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-8 border border-gray-100 dark:border-gray-700 text-center space-y-8 animate-fadeIn">
          <div>
-            <div className="w-24 h-24 bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm overflow-hidden">
+            <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm overflow-hidden ${config.logoUrl ? 'bg-white' : 'bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400'}`}>
                 {config.logoUrl ? (
                     <img src={config.logoUrl} alt="Logo" className="w-full h-full object-contain p-3" referrerPolicy="no-referrer" />
                 ) : (
