@@ -87,12 +87,16 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
             const footerY = canvas.height - footerHeightPx;
 
             // Draw Footer Background (White Overlay) RESTRICTED TO PHOTO WIDTH
-            ctx.fillStyle = '#ffffff'; 
-            ctx.fillRect(photoX, footerY, photoW, footerHeightPx);
-            
-            // Top Border of Footer
-            ctx.beginPath(); ctx.moveTo(photoX, footerY); ctx.lineTo(photoX + photoW, footerY); 
-            ctx.strokeStyle = '#000000'; ctx.lineWidth = 2; ctx.setLineDash([]); ctx.stroke();
+            // — skipped when printQrFooterTransparent is on, so the logo/id/QR are
+            // drawn straight on top of the photo instead of on a white strip.
+            if (!config.printQrFooterTransparent) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(photoX, footerY, photoW, footerHeightPx);
+
+                // Top Border of Footer
+                ctx.beginPath(); ctx.moveTo(photoX, footerY); ctx.lineTo(photoX + photoW, footerY);
+                ctx.strokeStyle = '#000000'; ctx.lineWidth = 2; ctx.setLineDash([]); ctx.stroke();
+            }
             
             // Draw Footer Content (Logo, Text, QR)
             const paddingMM = 5;

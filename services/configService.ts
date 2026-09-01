@@ -86,7 +86,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   customContentTextColor: "#475569",
   customContentSize: 'md',
 
-  showPrintQrFooter: true
+  showPrintQrFooter: true,
+  printQrFooterTransparent: false
 };
 
 export const saveConfig = (config: AppConfig) => {

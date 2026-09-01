@@ -149,4 +149,5 @@ export interface AppConfig {
   customContentLinkUrl?: string;
 
   showPrintQrFooter?: boolean; // Bật/tắt phần logo + mã ảnh + QR in trên ảnh 20x30
+  printQrFooterTransparent?: boolean; // Hiển thị logo + mã ảnh + QR đè trực tiếp lên ảnh, không cần dải nền trắng
 }

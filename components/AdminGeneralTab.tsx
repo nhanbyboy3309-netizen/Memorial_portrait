@@ -161,6 +161,29 @@ const AdminGeneralTab: React.FC<AdminGeneralTabProps> = ({ form, onChange }) => 
             />
           </button>
         </div>
+
+        {form.showPrintQrFooter !== false && (
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-bold text-gray-800 dark:text-white">Nền trong suốt (đè trực tiếp lên ảnh)</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Bỏ dải nền trắng phía sau logo/mã ảnh/QR, hiển thị đè thẳng lên ảnh in.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onChange('printQrFooterTransparent', !form.printQrFooterTransparent)}
+              className={`relative shrink-0 w-12 h-7 rounded-full transition-colors duration-200 ${
+                form.printQrFooterTransparent ? 'bg-brand-600' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+              aria-pressed={!!form.printQrFooterTransparent}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-200 ${
+                  form.printQrFooterTransparent ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
