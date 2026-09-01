@@ -82,6 +82,7 @@ const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, 
           selectedSize={settings.size}
           onSizeChange={(s) => setSettings({...settings, size: s})}
           onHome={onHome}
+          config={config}
         />
       )}
       

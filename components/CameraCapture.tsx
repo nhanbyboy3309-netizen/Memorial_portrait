@@ -9,17 +9,12 @@ interface CameraCaptureProps {
   selectedSize: PhotoSize;
   onSizeChange: (size: PhotoSize) => void;
   onHome?: () => void;
+  config?: AppConfig;
 }
 
-const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, selectedSize, onSizeChange, onHome }) => {
+const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, selectedSize, onSizeChange, onHome, config = {} as AppConfig }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMobileLink, setShowMobileLink] = React.useState(false);
-  const config = React.useMemo(() => {
-    try {
-        const saved = localStorage.getItem('id_photo_booth_config');
-        return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -60,8 +55,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, selectedSize, 
 
       <div className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-8 border border-gray-100 dark:border-gray-700 text-center space-y-8 animate-fadeIn">
          <div>
-            <div className="w-24 h-24 bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
-                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm overflow-hidden ${config.logoUrl ? 'bg-white' : 'bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400'}`}>
+                {config.logoUrl ? (
+                    <img src={config.logoUrl} alt="Logo" className="w-full h-full object-contain p-3" referrerPolicy="no-referrer" />
+                ) : (
+                    <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                )}
             </div>
             <h2 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tight">{t('capture.msg.upload_prompt', config)}</h2>
             <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm">Chụp ảnh từ máy tính đã bị tắt. Vui lòng tải ảnh lên.</p>
