@@ -42,10 +42,10 @@ const EditorMakeupTab: React.FC<EditorMakeupTabProps> = ({ config, settings, onA
             key={opt.id} 
             onClick={() => {
               onAiBeautyChange(colorKey, opt.id);
-              if ((settings.beauty as any)[intensityKey] === 0) {
+              if (opt.id !== 'none' && opt.id !== 'original' && (settings.beauty as any)[intensityKey] === 0) {
                 onAiBeautyChange(intensityKey, 50);
               }
-            }} 
+            }}
             className={`group relative flex flex-col items-center gap-1 transition-all`}
           >
             <div 

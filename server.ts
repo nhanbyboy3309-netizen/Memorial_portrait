@@ -70,9 +70,9 @@ async function startServer() {
       const blemish = clamp(beauty.blemishIntensity, 100);
       const eyebrow = clamp((beauty.eyebrowIntensity / 100) * 30, 30);
       const eyelash = clamp((beauty.eyelashIntensity / 100) * 25, 25);
-      const restore = clamp(beauty.restorationIntensity ?? 100, 100);
-      const colorize = clamp(beauty.colorizeIntensity ?? 100, 100);
-      const sharpen = clamp(beauty.sharpenIntensity ?? 100, 100);
+      const restore = clamp(beauty.restorationIntensity ?? 0, 100);
+      const colorize = clamp(beauty.colorizeIntensity ?? 0, 100);
+      const sharpen = clamp(beauty.sharpenIntensity ?? 0, 100);
 
       const lipstick = beauty.lipstickColor !== 'none' ? `${beauty.lipstickColor} (Intensity: ${beauty.lipstickIntensity}%)` : 'None';
       const blush = beauty.blushColor !== 'none' ? `${beauty.blushColor} (Intensity: ${beauty.blushIntensity}%)` : 'None';
