@@ -109,10 +109,11 @@ const AdminTestingTab: React.FC<AdminTestingTabProps> = ({ form }) => {
           <div className="flex-1 w-full h-full">
             {testView === 'camera' && (
                <div className="w-full h-full flex items-center justify-center p-0">
-                  <CameraCapture 
-                     onCapture={() => alert('Đã chụp thành công trong chế độ Test!')} 
-                     selectedSize={testSettings.size} 
-                     onSizeChange={s => setTestSettings({...testSettings, size: s})} 
+                  <CameraCapture
+                     onCapture={() => alert('Đã chụp thành công trong chế độ Test!')}
+                     selectedSize={testSettings.size}
+                     onSizeChange={s => setTestSettings({...testSettings, size: s})}
+                     config={form}
                   />
                </div>
             )}
