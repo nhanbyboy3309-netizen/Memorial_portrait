@@ -166,4 +166,5 @@ export interface AppConfig {
 
   showPrintQrFooter?: boolean; // Bật/tắt phần logo + mã ảnh + QR in trên ảnh 20x30
   printQrFooterTransparent?: boolean; // Hiển thị logo + mã ảnh + QR đè trực tiếp lên ảnh, không cần dải nền trắng
+  infoBandHeightCm?: number; // Chiều cao (cm) của dải nền trắng chứa nội dung thông tin tùy chỉnh trên ảnh 20x30
 }

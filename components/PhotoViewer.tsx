@@ -128,70 +128,78 @@ const PhotoViewer: React.FC<PhotoViewerProps> = ({ photoId, config }) => {
 
             // FOOTER LOGIC (Overlay on A4/Photo bottom)
             const hasCustomInfo = photo.settings.info?.enabled && photo.settings.info?.text?.trim().length > 0;
-            const footerHeightMM = hasCustomInfo ? 30 : 20;
+            const showQrFooter = config?.showPrintQrFooter !== false;
+            if (showQrFooter || hasCustomInfo) {
+            const infoBandHeightMM = (config?.infoBandHeightCm ?? 4) * 10;
+            const footerHeightMM = hasCustomInfo ? infoBandHeightMM : 20;
             const footerHeightPx = footerHeightMM * MM_TO_PX;
             const footerY = canvas.height - footerHeightPx;
 
-            // Footer Background
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, footerY, canvas.width, footerHeightPx);
+            // Footer Background — skipped when printQrFooterTransparent is on.
+            if (!config?.printQrFooterTransparent) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, footerY, canvas.width, footerHeightPx);
 
-            // Top Border
-            ctx.beginPath(); ctx.moveTo(0, footerY); ctx.lineTo(canvas.width, footerY);
-            ctx.strokeStyle = '#000000'; ctx.lineWidth = 2; ctx.stroke();
+                // Top Border
+                ctx.beginPath(); ctx.moveTo(0, footerY); ctx.lineTo(canvas.width, footerY);
+                ctx.strokeStyle = '#000000'; ctx.lineWidth = 2; ctx.stroke();
+            }
 
             const paddingMM = 5;
             const paddingPx = paddingMM * MM_TO_PX;
-            
-            // --- LOGO & SHOP NAME (Left) ---
-            let leftContentRightX = paddingPx;
-            
-            if (logoImg) {
-                const logoHeightMM = hasCustomInfo ? 15 : 10;
-                const logoH = logoHeightMM * MM_TO_PX;
-                const logoW = logoImg.width * (logoH / logoImg.height);
-                
-                const shopNameSize = footerHeightPx * 0.10; 
-                ctx.font = `bold ${shopNameSize}px sans-serif`;
-                const shopNameW = ctx.measureText(config?.shopName || "").width;
-                
-                const maxWidth = Math.max(logoW, shopNameW);
-                const gap = 2 * MM_TO_PX;
-                const totalGroupH = logoH + gap + shopNameSize;
-                const groupStartY = footerY + (footerHeightPx - totalGroupH) / 2;
-                const groupCenterX = paddingPx + maxWidth / 2;
-                
-                ctx.drawImage(logoImg, groupCenterX - logoW / 2, groupStartY, logoW, logoH);
-                
-                ctx.fillStyle = photo.settings.info?.color || '#000000';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'top';
-                ctx.fillText(config?.shopName || "", groupCenterX, groupStartY + logoH + gap);
-                
-                leftContentRightX += maxWidth + paddingPx;
-            } else {
-                ctx.fillStyle = photo.settings.info?.color || '#000000';
-                const fontSize = hasCustomInfo ? 8 * MM_TO_PX : 6 * MM_TO_PX;
-                ctx.font = `bold ${fontSize}px sans-serif`;
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(config?.shopName || "", paddingPx, footerY + footerHeightPx / 2);
-                leftContentRightX += ctx.measureText(config?.shopName || "").width + paddingPx;
-            }
 
-            // --- QR (Right) ---
-            const qrSizeMM = hasCustomInfo ? 18 : 12; 
-            const qrSize = qrSizeMM * MM_TO_PX; 
-            const qrX = canvas.width - qrSize - paddingPx;
-            const qrY = footerY + (footerHeightPx - qrSize) / 2;
-            
-            if (qrImg) {
-                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+            // --- LOGO & SHOP NAME (Left) --- only when the id/QR strip is on
+            let leftContentRightX = paddingPx;
+            let qrX = canvas.width - paddingPx;
+
+            if (showQrFooter) {
+                if (logoImg) {
+                    const logoHeightMM = hasCustomInfo ? 15 : 10;
+                    const logoH = logoHeightMM * MM_TO_PX;
+                    const logoW = logoImg.width * (logoH / logoImg.height);
+
+                    const shopNameSize = footerHeightPx * 0.10;
+                    ctx.font = `bold ${shopNameSize}px sans-serif`;
+                    const shopNameW = ctx.measureText(config?.shopName || "").width;
+
+                    const maxWidth = Math.max(logoW, shopNameW);
+                    const gap = 2 * MM_TO_PX;
+                    const totalGroupH = logoH + gap + shopNameSize;
+                    const groupStartY = footerY + (footerHeightPx - totalGroupH) / 2;
+                    const groupCenterX = paddingPx + maxWidth / 2;
+
+                    ctx.drawImage(logoImg, groupCenterX - logoW / 2, groupStartY, logoW, logoH);
+
+                    ctx.fillStyle = photo.settings.info?.color || '#000000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(config?.shopName || "", groupCenterX, groupStartY + logoH + gap);
+
+                    leftContentRightX += maxWidth + paddingPx;
+                } else {
+                    ctx.fillStyle = photo.settings.info?.color || '#000000';
+                    const fontSize = hasCustomInfo ? 8 * MM_TO_PX : 6 * MM_TO_PX;
+                    ctx.font = `bold ${fontSize}px sans-serif`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(config?.shopName || "", paddingPx, footerY + footerHeightPx / 2);
+                    leftContentRightX += ctx.measureText(config?.shopName || "").width + paddingPx;
+                }
+
+                // --- QR (Right) ---
+                const qrSizeMM = hasCustomInfo ? 18 : 12;
+                const qrSize = qrSizeMM * MM_TO_PX;
+                qrX = canvas.width - qrSize - paddingPx;
+                const qrY = footerY + (footerHeightPx - qrSize) / 2;
+
+                if (qrImg) {
+                    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+                }
             }
 
             // --- CENTER CONTENT ---
             const contentStartX = leftContentRightX;
-            const contentEndX = qrX - paddingPx;
+            const contentEndX = showQrFooter ? qrX - paddingPx : canvas.width - paddingPx;
             const contentWidth = contentEndX - contentStartX;
             const centerY = footerY + footerHeightPx / 2;
 
@@ -223,6 +231,7 @@ const PhotoViewer: React.FC<PhotoViewerProps> = ({ photoId, config }) => {
                     ctx.fillText(line, textX, currentTextY, contentWidth);
                     currentTextY += lineHeight;
                 });
+            }
             }
         } else {
              // Fallback for legacy sizes if needed, generally unreachable now

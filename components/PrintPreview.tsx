@@ -77,12 +77,16 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
             ctx.restore();
 
             // === FOOTER LOGIC (Overlay on Photo) ===
-            if (config.showPrintQrFooter === false) return canvas.toDataURL('image/png');
-
             const hasCustomInfo = settings.info?.enabled && settings.info?.text?.trim().length > 0;
-            const footerHeightMM = hasCustomInfo ? 30 : 20; 
+            const showQrFooter = config.showPrintQrFooter !== false;
+            // The custom info text is a separate, user-opted-in feature from the shop
+            // logo/id/QR strip — it must still render even when that strip is off.
+            if (!showQrFooter && !hasCustomInfo) return canvas.toDataURL('image/png');
+
+            const infoBandHeightMM = (config.infoBandHeightCm ?? 4) * 10;
+            const footerHeightMM = hasCustomInfo ? infoBandHeightMM : 20;
             const footerHeightPx = footerHeightMM * MM_TO_PX;
-            
+
             // Footer aligns to bottom of paper, but we want to restrict width to photo width
             const footerY = canvas.height - footerHeightPx;
 
@@ -97,64 +101,67 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                 ctx.beginPath(); ctx.moveTo(photoX, footerY); ctx.lineTo(photoX + photoW, footerY);
                 ctx.strokeStyle = '#000000'; ctx.lineWidth = 2; ctx.setLineDash([]); ctx.stroke();
             }
-            
+
             // Draw Footer Content (Logo, Text, QR)
             const paddingMM = 5;
             const paddingPx = paddingMM * MM_TO_PX;
-            
+
             // Calculate content area bounds based on photo width
             const contentLeft = photoX + paddingPx;
             const contentRight = photoX + photoW - paddingPx;
-            
-            // --- LOGO & SHOP NAME (Left Stacked) ---
-            let leftContentRightX = contentLeft;
-            
-            if (logoImg) {
-                const logoHeightMM = hasCustomInfo ? 15 : 10;
-                const logoH = logoHeightMM * MM_TO_PX;
-                const logoW = logoImg.width * (logoH / logoImg.height);
-                
-                const shopNameSize = footerHeightPx * 0.10; 
-                ctx.font = `bold ${shopNameSize}px sans-serif`;
-                const shopNameW = ctx.measureText(config.shopName).width;
-                
-                const maxWidth = Math.max(logoW, shopNameW);
-                const gap = 2 * MM_TO_PX; 
-                const totalGroupH = logoH + gap + shopNameSize;
-                const groupStartY = footerY + (footerHeightPx - totalGroupH) / 2;
-                const groupCenterX = contentLeft + maxWidth / 2;
-                
-                ctx.drawImage(logoImg, groupCenterX - logoW / 2, groupStartY, logoW, logoH);
-                
-                ctx.fillStyle = settings.info?.color || '#000000';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'top';
-                ctx.fillText(config.shopName, groupCenterX, groupStartY + logoH + gap);
-                
-                leftContentRightX += maxWidth + paddingPx;
-            } else {
-                ctx.fillStyle = settings.info?.color || '#000000';
-                const fontSize = hasCustomInfo ? 8 * MM_TO_PX : 6 * MM_TO_PX;
-                ctx.font = `bold ${fontSize}px sans-serif`;
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(config.shopName, contentLeft, footerY + footerHeightPx / 2);
-                leftContentRightX += ctx.measureText(config.shopName).width + paddingPx;
-            }
 
-            // --- QR (Right) ---
-            const qrSizeMM = hasCustomInfo ? 18 : 12; 
-            const qrSize = qrSizeMM * MM_TO_PX; 
-            const qrX = contentRight - qrSize;
-            const qrY = footerY + (footerHeightPx - qrSize) / 2;
-            
-            if (qrImg) {
-                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+            // --- LOGO & SHOP NAME (Left Stacked) --- only when the id/QR strip is on
+            let leftContentRightX = contentLeft;
+            let qrX = contentRight;
+
+            if (showQrFooter) {
+                if (logoImg) {
+                    const logoHeightMM = hasCustomInfo ? 15 : 10;
+                    const logoH = logoHeightMM * MM_TO_PX;
+                    const logoW = logoImg.width * (logoH / logoImg.height);
+
+                    const shopNameSize = footerHeightPx * 0.10;
+                    ctx.font = `bold ${shopNameSize}px sans-serif`;
+                    const shopNameW = ctx.measureText(config.shopName).width;
+
+                    const maxWidth = Math.max(logoW, shopNameW);
+                    const gap = 2 * MM_TO_PX;
+                    const totalGroupH = logoH + gap + shopNameSize;
+                    const groupStartY = footerY + (footerHeightPx - totalGroupH) / 2;
+                    const groupCenterX = contentLeft + maxWidth / 2;
+
+                    ctx.drawImage(logoImg, groupCenterX - logoW / 2, groupStartY, logoW, logoH);
+
+                    ctx.fillStyle = settings.info?.color || '#000000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(config.shopName, groupCenterX, groupStartY + logoH + gap);
+
+                    leftContentRightX += maxWidth + paddingPx;
+                } else {
+                    ctx.fillStyle = settings.info?.color || '#000000';
+                    const fontSize = hasCustomInfo ? 8 * MM_TO_PX : 6 * MM_TO_PX;
+                    ctx.font = `bold ${fontSize}px sans-serif`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(config.shopName, contentLeft, footerY + footerHeightPx / 2);
+                    leftContentRightX += ctx.measureText(config.shopName).width + paddingPx;
+                }
+
+                // --- QR (Right) ---
+                const qrSizeMM = hasCustomInfo ? 18 : 12;
+                const qrSize = qrSizeMM * MM_TO_PX;
+                qrX = contentRight - qrSize;
+                const qrY = footerY + (footerHeightPx - qrSize) / 2;
+
+                if (qrImg) {
+                    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+                }
             }
 
             // --- CENTER CONTENT ---
             const contentStartX = leftContentRightX;
-            const contentEndX = qrX - paddingPx;
+            const contentEndX = (showQrFooter ? qrX : contentRight) - (showQrFooter ? paddingPx : 0);
             const contentWidth = contentEndX - contentStartX;
             const centerY = footerY + footerHeightPx / 2;
 

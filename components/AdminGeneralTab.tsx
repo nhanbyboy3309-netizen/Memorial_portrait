@@ -184,6 +184,22 @@ const AdminGeneralTab: React.FC<AdminGeneralTabProps> = ({ form, onChange }) => 
             </button>
           </div>
         )}
+
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-gray-800 dark:text-white">Chiều cao dải nền thông tin (cm)</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Áp dụng khi có bật "Hiển thị thông tin" (tên, chức vụ...) trên ảnh 20x30 — dải nền trắng phía dưới hiển thị nội dung đó.</p>
+          </div>
+          <input
+            type="number"
+            min={2}
+            max={15}
+            step={0.5}
+            value={form.infoBandHeightCm ?? 4}
+            onChange={e => onChange('infoBandHeightCm', Number(e.target.value))}
+            className="w-20 shrink-0 text-center bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-bold rounded-lg py-1.5 px-2"
+          />
+        </div>
       </div>
     </div>
   );

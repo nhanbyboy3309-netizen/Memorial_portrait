@@ -240,6 +240,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     if (settings.beauty.blemishMaskUrl) handleAiBeautyChange('blemishMaskUrl', undefined);
   };
 
+  // Live preview of the print-time info band (see PrintPreview.tsx) — only meaningful
+  // on the 20x30 layout, which is the only size that ever draws this band.
+  const infoBandVisible = settings.size === PhotoSize.SIZE_20X30 && !!settings.info?.enabled && !!settings.info?.text?.trim();
+  const infoBandHeightPct = ((config.infoBandHeightCm ?? 4) / 30) * 100;
+
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans"
        onMouseUp={() => { isDraggingRef.current = false; }}
@@ -394,7 +399,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         
         {/* Comparison Image Container */}
         <div ref={imageContainerRef} className="relative shadow-2xl rounded-2xl md:rounded-[2rem] border-[4px] md:border-[10px] border-white dark:border-slate-800 bg-white dark:bg-slate-800 overflow-hidden max-h-full max-w-full cursor-col-resize touch-none group"
-             style={{ aspectRatio: '2/3', height: '100%', maxHeight: '100%' }}
+             style={{ aspectRatio: '2/3', height: '100%', maxHeight: '100%', containerType: 'size' } as React.CSSProperties}
              onMouseDown={() => { if (!brushActive) isDraggingRef.current = true; }}
              onTouchStart={() => { if (!brushActive) isDraggingRef.current = true; }}
              onMouseMove={(e) => {
@@ -415,6 +420,31 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
           <img src={baseImage} className="absolute inset-0 w-full h-full object-contain pointer-events-none" alt="Original" />
           <div className="absolute inset-0 w-full h-full pointer-events-none" style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}>
              <img src={processedUrl} className="absolute inset-0 w-full h-full object-contain" style={{ filter: imageFilters }} alt="Processed" />
+             {infoBandVisible && (
+               <div
+                 className="absolute inset-x-0 bottom-0 flex items-center overflow-hidden"
+                 style={{
+                   height: `${infoBandHeightPct}%`,
+                   backgroundColor: config.printQrFooterTransparent ? 'transparent' : '#ffffff',
+                   borderTop: config.printQrFooterTransparent ? 'none' : '2px solid #000',
+                   justifyContent: settings.info.alignment === 'left' ? 'flex-start' : settings.info.alignment === 'right' ? 'flex-end' : 'center',
+                   padding: '0 6%'
+                 }}
+               >
+                 <span
+                   style={{
+                     color: settings.info.color,
+                     fontWeight: 700,
+                     fontSize: `${(settings.info.fontSize || 20) * 0.1}cqh`,
+                     whiteSpace: 'pre-wrap',
+                     textAlign: settings.info.alignment,
+                     lineHeight: 1.25
+                   } as React.CSSProperties}
+                 >
+                   {settings.info.text}
+                 </span>
+               </div>
+             )}
           </div>
           <BlemishBrushOverlay
              imageSrc={baseImage}
