@@ -96,10 +96,6 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
             if (!config.printQrFooterTransparent) {
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(photoX, footerY, photoW, footerHeightPx);
-
-                // Top Border of Footer
-                ctx.beginPath(); ctx.moveTo(photoX, footerY); ctx.lineTo(photoX + photoW, footerY);
-                ctx.strokeStyle = '#000000'; ctx.lineWidth = 2; ctx.setLineDash([]); ctx.stroke();
             }
 
             // Draw Footer Content (Logo, Text, QR)
@@ -116,7 +112,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
 
             if (showQrFooter) {
                 if (logoImg) {
-                    const logoHeightMM = hasCustomInfo ? 15 : 10;
+                    const logoHeightMM = 10; // keep logo size fixed regardless of the custom-info band height
                     const logoH = logoHeightMM * MM_TO_PX;
                     const logoW = logoImg.width * (logoH / logoImg.height);
 
@@ -149,7 +145,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                 }
 
                 // --- QR (Right) ---
-                const qrSizeMM = hasCustomInfo ? 18 : 12;
+                const qrSizeMM = 12; // keep QR size fixed regardless of the custom-info band height
                 const qrSize = qrSizeMM * MM_TO_PX;
                 qrX = contentRight - qrSize;
                 const qrY = footerY + (footerHeightPx - qrSize) / 2;

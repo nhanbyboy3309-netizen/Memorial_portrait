@@ -426,7 +426,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                  style={{
                    height: `${infoBandHeightPct}%`,
                    backgroundColor: config.printQrFooterTransparent ? 'transparent' : '#ffffff',
-                   borderTop: config.printQrFooterTransparent ? 'none' : '2px solid #000',
                    justifyContent: settings.info.alignment === 'left' ? 'flex-start' : settings.info.alignment === 'right' ? 'flex-end' : 'center',
                    padding: '0 6%'
                  }}

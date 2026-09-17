@@ -139,10 +139,6 @@ const PhotoViewer: React.FC<PhotoViewerProps> = ({ photoId, config }) => {
             if (!config?.printQrFooterTransparent) {
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, footerY, canvas.width, footerHeightPx);
-
-                // Top Border
-                ctx.beginPath(); ctx.moveTo(0, footerY); ctx.lineTo(canvas.width, footerY);
-                ctx.strokeStyle = '#000000'; ctx.lineWidth = 2; ctx.stroke();
             }
 
             const paddingMM = 5;
@@ -154,7 +150,7 @@ const PhotoViewer: React.FC<PhotoViewerProps> = ({ photoId, config }) => {
 
             if (showQrFooter) {
                 if (logoImg) {
-                    const logoHeightMM = hasCustomInfo ? 15 : 10;
+                    const logoHeightMM = 10; // keep logo size fixed regardless of the custom-info band height
                     const logoH = logoHeightMM * MM_TO_PX;
                     const logoW = logoImg.width * (logoH / logoImg.height);
 
@@ -187,7 +183,7 @@ const PhotoViewer: React.FC<PhotoViewerProps> = ({ photoId, config }) => {
                 }
 
                 // --- QR (Right) ---
-                const qrSizeMM = hasCustomInfo ? 18 : 12;
+                const qrSizeMM = 12; // keep QR size fixed regardless of the custom-info band height
                 const qrSize = qrSizeMM * MM_TO_PX;
                 qrX = canvas.width - qrSize - paddingPx;
                 const qrY = footerY + (footerHeightPx - qrSize) / 2;
