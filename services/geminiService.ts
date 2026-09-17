@@ -40,8 +40,9 @@ export const determineAIModel = (
     (safeBeauty.hairVolume || 0) > 0 ||
     (safeBeauty.hairColor && safeBeauty.hairColor !== 'original');
   const hasCustomPrompt = Boolean(customAiPrompt && customAiPrompt.trim().length > 0);
+  const hasBlemishMask = Boolean(safeBeauty.blemishMaskUrl);
 
-  const isComplex = hasClothing || hasRestoration || hasMakeup || hasHairEdit || hasCustomPrompt;
+  const isComplex = hasClothing || hasRestoration || hasMakeup || hasHairEdit || hasCustomPrompt || hasBlemishMask;
 
   if (!isComplex) {
     return {
@@ -57,6 +58,7 @@ export const determineAIModel = (
   if (hasMakeup) reasons.push("trang điểm AI");
   if (hasHairEdit) reasons.push("chỉnh sửa tóc");
   if (hasCustomPrompt) reasons.push("yêu cầu tùy chỉnh");
+  if (hasBlemishMask) reasons.push("cọ tẩy mụn theo vùng đánh dấu");
 
   return {
     model: COMPLEX_MODEL,

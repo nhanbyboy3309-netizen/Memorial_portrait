@@ -87,7 +87,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   customContentSize: 'md',
 
   showPrintQrFooter: true,
-  printQrFooterTransparent: false
+  printQrFooterTransparent: false,
+  infoBandHeightCm: 4
 };
 
 export const saveConfig = (config: AppConfig) => {

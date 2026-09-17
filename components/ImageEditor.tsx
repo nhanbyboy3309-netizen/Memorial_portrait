@@ -1,8 +1,11 @@
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useId } from 'react';
 import { BackgroundType, PhotoSettings, PhotoSize, AppConfig, SkinToneType } from '../types';
 import { processIDPhoto } from '../services/geminiService';
 import { t } from '../services/i18n';
+import { buildToneFilterMarkup, isToneFilterActive } from '../services/toneFilter';
+import { drawInfoBand } from '../services/infoBand';
+import BlemishBrushOverlay from './BlemishBrushOverlay';
 
 // Sub-components
 import EditorClothingTab from './EditorClothingTab';
@@ -42,6 +45,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [loadingAction, setLoadingAction] = useState<string>('');
   const [isCropping, setIsCropping] = useState(false);
   const [sliderPosition, setSliderPosition] = useState(50);
+  const [brushActive, setBrushActive] = useState(false);
+  const [brushSize, setBrushSize] = useState(30);
+  useEffect(() => { if (activeTab !== 'makeup') setBrushActive(false); }, [activeTab]);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const tabScrollRef = useRef<HTMLDivElement>(null);
@@ -73,6 +79,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
        cloth: s.clothingPrompt,
        customPrompt: s.customAiPrompt, // Added custom prompt to hash
        blemish: beauty.blemishIntensity,
+       blemishMask: beauty.blemishMaskUrl,
        smooth: beauty.smoothSkin,
        restore: beauty.restorationIntensity,
        colorize: beauty.colorizeIntensity,
@@ -96,6 +103,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
        beauty: {
          ...settings.beauty,
          blemishIntensity: 0,
+         blemishMaskUrl: undefined,
          smoothSkin: 0,
          restorationIntensity: 0,
          colorizeIntensity: 0,
@@ -179,9 +187,18 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const handleClientBeautyChange = (key: keyof typeof settings.beauty, value: any) => onUpdateSettings({ ...settings, beauty: { ...settings.beauty, [key]: value } });
   const handleBgChange = (bgType: BackgroundType, hex?: string) => onUpdateSettings({ ...settings, background: bgType, customBackgroundColor: hex });
 
+  const toneFilterId = `tone-filter-${useId()}`;
+  const toneFilterActive = isToneFilterActive(settings.beauty);
+  const toneFilterMarkup = useMemo(
+    () => (toneFilterActive ? buildToneFilterMarkup(toneFilterId, settings.beauty) : ''),
+    [toneFilterId, toneFilterActive, settings.beauty.highlightIntensity, settings.beauty.shadowIntensity,
+     settings.beauty.midtoneIntensity, settings.beauty.cyanIntensity, settings.beauty.magentaIntensity,
+     settings.beauty.yellowIntensity, settings.beauty.keyIntensity]
+  );
+
   const imageFilters = useMemo(() => {
     const { lighting, contrast, skinToneIntensity, skinToneType } = settings.beauty;
-    const brightnessVal = 100 + (lighting * 1.5); 
+    const brightnessVal = 100 + (lighting * 1.5);
     const contrastVal = 100 + (contrast * 1.5);
     let sepia = 0, hue = 0, saturate = 100;
     if (skinToneIntensity > 0) {
@@ -189,8 +206,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         else if (skinToneType === SkinToneType.ROSY) { sepia = skinToneIntensity * 0.15; hue = -10; saturate = 100 + (skinToneIntensity * 0.1); }
         else if (skinToneType === SkinToneType.FAIR) { saturate = 100 - (skinToneIntensity * 0.1); }
     }
-    return `brightness(${brightnessVal}%) contrast(${contrastVal}%) saturate(${saturate}%) sepia(${sepia}%) hue-rotate(${hue}deg)`;
-  }, [settings.beauty]);
+    const base = `brightness(${brightnessVal}%) contrast(${contrastVal}%) saturate(${saturate}%) sepia(${sepia}%) hue-rotate(${hue}deg)`;
+    return toneFilterActive ? `${base} url(#${toneFilterId})` : base;
+  }, [settings.beauty, toneFilterActive, toneFilterId]);
 
   const handleFinish = () => {
     const finishExport = (imgSrc: string) => {
@@ -201,7 +219,20 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         img.src = imgSrc;
         img.onload = () => {
             canvas.width = img.width; canvas.height = img.height;
-            if (ctx) { ctx.filter = imageFilters; ctx.drawImage(img, 0, 0, canvas.width, canvas.height); onProcessedImage(canvas.toDataURL('image/png', 1.0)); onNext(); }
+            if (ctx) {
+                ctx.filter = imageFilters; ctx.drawImage(img, 0, 0, canvas.width, canvas.height); ctx.filter = 'none';
+                if (settings.size === PhotoSize.SIZE_20X30) {
+                    drawInfoBand(ctx, {
+                        canvasWidth: canvas.width,
+                        canvasHeight: canvas.height,
+                        info: settings.info,
+                        infoBandHeightCm: config.infoBandHeightCm ?? 4,
+                        transparentBackground: !!config.printQrFooterTransparent,
+                        reserveIdentityRow: config.showPrintQrFooter !== false
+                    });
+                }
+                onProcessedImage(canvas.toDataURL('image/png', 1.0)); onNext();
+            }
         };
     };
     if (hasPendingAiChanges) {
@@ -213,19 +244,36 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
 
   const startCrop = () => setIsCropping(true);
   const handleCropConfirm = (croppedImg: string) => {
-    setBaseImage(croppedImg); 
+    setBaseImage(croppedImg);
     setProcessedUrl(croppedImg);
-    setAppliedHash(''); 
+    setAppliedHash('');
     setIsCropping(false);
     setEditHistory([]);
     setCurrentHistoryIndex(-1);
+    // Cropping changes the framing, so any existing blemish-brush mask no longer lines up.
+    if (settings.beauty.blemishMaskUrl) handleAiBeautyChange('blemishMaskUrl', undefined);
   };
+
+  // Live preview of the print-time info band (see PrintPreview.tsx) — only meaningful
+  // on the 20x30 layout, which is the only size that ever draws this band.
+  const infoBandVisible = settings.size === PhotoSize.SIZE_20X30 && !!settings.info?.enabled && !!settings.info?.text?.trim();
+  const infoBandHeightPct = ((config.infoBandHeightCm ?? 4) / 30) * 100;
+  // The logo/shop-name/QR row (baked in at print time) always occupies a fixed 2cm at
+  // the very bottom of the band — mirror that here so the text doesn't visually sit
+  // where that row will actually be, matching PrintPreview/PhotoViewer's layout.
+  const identityRowVisible = config.showPrintQrFooter !== false;
+  const identityRowHeightPct = (2 / 30) * 100;
 
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans"
        onMouseUp={() => { isDraggingRef.current = false; }}
        onTouchEnd={() => { isDraggingRef.current = false; }}
     >
+      {toneFilterActive && (
+        <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+          <defs dangerouslySetInnerHTML={{ __html: toneFilterMarkup }} />
+        </svg>
+      )}
       {isCropping && (
         <ManualCropper 
             imageSrc={processedUrl}
@@ -307,7 +355,18 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
             />
           )}
           {activeTab === 'clothing' && <EditorClothingTab config={config} settings={settings} onClothingClick={handleClothingClick} />}
-          {activeTab === 'makeup' && <EditorMakeupTab config={config} settings={settings} onAiBeautyChange={handleAiBeautyChange} />}
+          {activeTab === 'makeup' && (
+            <EditorMakeupTab
+              config={config}
+              settings={settings}
+              onAiBeautyChange={handleAiBeautyChange}
+              brushActive={brushActive}
+              onToggleBrush={() => setBrushActive(v => !v)}
+              brushSize={brushSize}
+              onBrushSizeChange={setBrushSize}
+              onClearBrush={() => handleAiBeautyChange('blemishMaskUrl', undefined)}
+            />
+          )}
           {activeTab === 'beauty' && <EditorFilterTab settings={settings} onClientBeautyChange={handleClientBeautyChange} />}
           {activeTab === 'info' && <EditorInfoTab config={config} settings={settings} onUpdateSettings={onUpdateSettings} />}
         </div>
@@ -359,9 +418,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         
         {/* Comparison Image Container */}
         <div ref={imageContainerRef} className="relative shadow-2xl rounded-2xl md:rounded-[2rem] border-[4px] md:border-[10px] border-white dark:border-slate-800 bg-white dark:bg-slate-800 overflow-hidden max-h-full max-w-full cursor-col-resize touch-none group"
-             style={{ aspectRatio: '2/3', height: '100%', maxHeight: '100%' }}
-             onMouseDown={() => { isDraggingRef.current = true; }}
-             onTouchStart={() => { isDraggingRef.current = true; }}
+             style={{ aspectRatio: '2/3', height: '100%', maxHeight: '100%', containerType: 'size' } as React.CSSProperties}
+             onMouseDown={() => { if (!brushActive) isDraggingRef.current = true; }}
+             onTouchStart={() => { if (!brushActive) isDraggingRef.current = true; }}
              onMouseMove={(e) => {
                if (isDraggingRef.current && imageContainerRef.current) {
                   const rect = imageContainerRef.current.getBoundingClientRect();
@@ -380,7 +439,39 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
           <img src={baseImage} className="absolute inset-0 w-full h-full object-contain pointer-events-none" alt="Original" />
           <div className="absolute inset-0 w-full h-full pointer-events-none" style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}>
              <img src={processedUrl} className="absolute inset-0 w-full h-full object-contain" style={{ filter: imageFilters }} alt="Processed" />
+             {infoBandVisible && (
+               <div
+                 className="absolute inset-x-0 bottom-0 flex items-center overflow-hidden"
+                 style={{
+                   height: `${infoBandHeightPct}%`,
+                   backgroundColor: config.printQrFooterTransparent ? 'transparent' : '#ffffff',
+                   justifyContent: settings.info.alignment === 'left' ? 'flex-start' : settings.info.alignment === 'right' ? 'flex-end' : 'center',
+                   padding: '0 6%',
+                   paddingBottom: (identityRowVisible && infoBandHeightPct > identityRowHeightPct) ? `${identityRowHeightPct}cqh` : 0
+                 } as React.CSSProperties}
+               >
+                 <span
+                   style={{
+                     color: settings.info.color,
+                     fontWeight: 700,
+                     fontSize: `${(settings.info.fontSize || 20) * 0.1}cqh`,
+                     whiteSpace: 'pre-wrap',
+                     textAlign: settings.info.alignment,
+                     lineHeight: 1.25
+                   } as React.CSSProperties}
+                 >
+                   {settings.info.text}
+                 </span>
+               </div>
+             )}
           </div>
+          <BlemishBrushOverlay
+             imageSrc={baseImage}
+             active={brushActive}
+             brushSize={brushSize}
+             maskDataUrl={settings.beauty.blemishMaskUrl}
+             onMaskChange={(url) => handleAiBeautyChange('blemishMaskUrl', url)}
+          />
           <div className="absolute top-0 bottom-0 w-0.5 bg-white z-30 shadow-[0_0_10px_rgba(0,0,0,0.3)]" style={{ left: `${sliderPosition}%` }}>
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full shadow-xl flex items-center justify-center border-2 border-brand-600 transition-transform group-hover:scale-110">
               <svg className="w-4 h-4 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path></svg>

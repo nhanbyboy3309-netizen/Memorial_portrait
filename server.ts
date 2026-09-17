@@ -58,6 +58,7 @@ async function startServer() {
 
       const ai = getAI();
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      const maskBase64 = beauty.blemishMaskUrl ? beauty.blemishMaskUrl.replace(/^data:image\/\w+;base64,/, "") : null;
 
       /* ===== INTENSITY SAFE =====
          Each slider is 0-100 from the UI; scale linearly to the prompt's
@@ -116,11 +117,13 @@ CONDITION-AWARE RESTORATION — first judge the photo's actual physical conditio
 
 ALLOWED — cosmetic surface edits (color/texture only, never geometry; this IS the requested restoration/beautification, apply it at the given intensity subject to the condition caps above, not just minimally):
 - Restoration ${restore}/100, Colorization ${colorize}/100, Sharpen ${sharpen}/100 (see condition-aware caps above).
-- Skin: smoothing ${smooth}/100, blemish cleanup ${blemish}/100 — subtractive retouching of existing texture, preserve identity marks, no new texture/pores.
+- Skin: smoothing ${smooth}/100, blemish cleanup ${blemish}/100 — subtractive retouching of existing texture, preserve identity marks. Keep it natural and photographic, never plastic/waxy/airbrushed: retain fine skin pores and micro-texture proportional to the requested intensity (even at high smoothing, pores should remain faintly visible up close), keep natural skin color variation and gentle shading around the nose/cheeks/forehead, and never flatten skin into a uniform matte surface. No new texture/pores beyond what naturally exists.
 - Makeup: lipstick=${lipstick}; blush=${blush}; contour (shading only) ${contour}/30; eyebrow ${eyebrow}/30; eyelash ${eyelash}/25 — pixel overlay only, follow the existing shape exactly, subtle and natural, no glam bias.
 - Hair: tidy/recolor the existing hairstyle only, color/style=${hair}. Do not invent a new hairstyle; keep natural texture.
 - Background: ${bgRule} Flat, uniform, no texture/noise, clean edge, no halo.
 - Clothing: ${clothingPrompt ? `replace with "${clothingPrompt}"` : "do NOT change clothing"} — edit strictly below the neck; must not alter neck, shoulders, or posture.
+
+${maskBase64 ? `RETOUCH MASK — IMAGE 2 above is the same photo with the exact spots the user wants removed marked in translucent red (drawn by hand, may be imprecise). Remove ONLY the blemish/spot/mark located under each red-marked area, using subtractive retouching that matches the immediately surrounding skin tone and texture. Do NOT retouch, smooth, or alter any other part of the skin, even other visible blemishes, unless already covered by the "Skin" instruction above — everything outside the red-marked areas must stay pixel-for-pixel as close to the original as possible.` : ''}
 
 ${customAiPrompt ? `SPECIAL INSTRUCTIONS (user-provided) — perform ONLY if they do not violate the identity-lock rules above: "${customAiPrompt}"` : ''}
 
@@ -129,16 +132,18 @@ OUTPUT: PNG, high quality, base64, no text, no metadata, no explanation.`;
       const targetModel = model || "gemini-3.1-flash-image";
       console.log(`[Gemini Process] Running image generation with model: ${targetModel}`);
 
+      const imageParts = [
+        { inlineData: { mimeType: "image/png", data: cleanBase64 } },
+        ...(maskBase64 ? [{ inlineData: { mimeType: "image/png", data: maskBase64 } }] : [])
+      ];
+
       let response;
       try {
         response = await ai.models.generateContent({
           model: targetModel,
           contents: [{
             role: "user",
-            parts: [
-              { inlineData: { mimeType: "image/png", data: cleanBase64 } },
-              { text: systemPrompt }
-            ]
+            parts: [...imageParts, { text: systemPrompt }]
           }]
         });
       } catch (firstErr: any) {
@@ -149,10 +154,7 @@ OUTPUT: PNG, high quality, base64, no text, no metadata, no explanation.`;
             model: "gemini-2.5-flash-image",
             contents: [{
               role: "user",
-              parts: [
-                { inlineData: { mimeType: "image/png", data: cleanBase64 } },
-                { text: systemPrompt }
-              ]
+              parts: [...imageParts, { text: systemPrompt }]
             }]
           });
         } else {
