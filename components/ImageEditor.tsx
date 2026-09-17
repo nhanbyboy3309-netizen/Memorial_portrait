@@ -4,6 +4,7 @@ import { BackgroundType, PhotoSettings, PhotoSize, AppConfig, SkinToneType } fro
 import { processIDPhoto } from '../services/geminiService';
 import { t } from '../services/i18n';
 import { buildToneFilterMarkup, isToneFilterActive } from '../services/toneFilter';
+import { drawInfoBand } from '../services/infoBand';
 import BlemishBrushOverlay from './BlemishBrushOverlay';
 
 // Sub-components
@@ -218,7 +219,20 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         img.src = imgSrc;
         img.onload = () => {
             canvas.width = img.width; canvas.height = img.height;
-            if (ctx) { ctx.filter = imageFilters; ctx.drawImage(img, 0, 0, canvas.width, canvas.height); onProcessedImage(canvas.toDataURL('image/png', 1.0)); onNext(); }
+            if (ctx) {
+                ctx.filter = imageFilters; ctx.drawImage(img, 0, 0, canvas.width, canvas.height); ctx.filter = 'none';
+                if (settings.size === PhotoSize.SIZE_20X30) {
+                    drawInfoBand(ctx, {
+                        canvasWidth: canvas.width,
+                        canvasHeight: canvas.height,
+                        info: settings.info,
+                        infoBandHeightCm: config.infoBandHeightCm ?? 4,
+                        transparentBackground: !!config.printQrFooterTransparent,
+                        reserveIdentityRow: config.showPrintQrFooter !== false
+                    });
+                }
+                onProcessedImage(canvas.toDataURL('image/png', 1.0)); onNext();
+            }
         };
     };
     if (hasPendingAiChanges) {

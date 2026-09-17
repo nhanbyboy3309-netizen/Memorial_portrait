@@ -126,119 +126,65 @@ const PhotoViewer: React.FC<PhotoViewerProps> = ({ photoId, config }) => {
             ctx.drawImage(mainPhotoImg, photoX, photoY, photoW, photoH);
             ctx.restore();
 
-            // FOOTER LOGIC (Overlay on A4/Photo bottom)
+            // IDENTITY ROW (Logo + Shop Name + QR, overlaid on Photo)
+            // The custom info band (white/transparent background + text) is already
+            // baked into photo.dataUrl by ImageEditor's handleFinish — this only adds
+            // the logo/shop-name/QR on top, in a fixed 20mm row at the bottom of the
+            // photo, so it never has to re-derive (and risk drifting from) that layout.
             const hasCustomInfo = photo.settings.info?.enabled && photo.settings.info?.text?.trim().length > 0;
             const showQrFooter = config?.showPrintQrFooter !== false;
-            if (showQrFooter || hasCustomInfo) {
-            const BASE_FOOTER_HEIGHT_MM = 20;
-            const infoBandHeightMM = (config?.infoBandHeightCm ?? 4) * 10;
-            const footerHeightMM = hasCustomInfo ? infoBandHeightMM : BASE_FOOTER_HEIGHT_MM;
-            const footerHeightPx = footerHeightMM * MM_TO_PX;
-            const footerY = canvas.height - footerHeightPx;
-
-            // Logo/shop-name/QR always sit in this fixed-height row anchored to the photo's
-            // bottom edge — same position as when there's no custom info (20mm band) — so a
-            // taller info band never shifts or resizes them; it only adds room above them.
-            const identityRowHeightPx = BASE_FOOTER_HEIGHT_MM * MM_TO_PX;
+            if (showQrFooter) {
+            const identityRowHeightPx = 20 * MM_TO_PX; // 20mm, matches drawInfoBand's reserved row
             const identityRowY = canvas.height - identityRowHeightPx;
 
-            // Footer Background — skipped when printQrFooterTransparent is on.
-            if (!config?.printQrFooterTransparent) {
+            // Only draw the background strip ourselves when there's no baked info band —
+            // otherwise photo.dataUrl already carries the (correctly-sized) background.
+            if (!hasCustomInfo && !config?.printQrFooterTransparent) {
                 ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, footerY, canvas.width, footerHeightPx);
+                ctx.fillRect(0, identityRowY, canvas.width, identityRowHeightPx);
             }
 
             const paddingMM = 5;
             const paddingPx = paddingMM * MM_TO_PX;
 
-            // --- LOGO & SHOP NAME (Left) --- only when the id/QR strip is on
-            let leftContentRightX = paddingPx;
-            let qrX = canvas.width - paddingPx;
+            if (logoImg) {
+                const logoHeightMM = 10;
+                const logoH = logoHeightMM * MM_TO_PX;
+                const logoW = logoImg.width * (logoH / logoImg.height);
 
-            if (showQrFooter) {
-                if (logoImg) {
-                    const logoHeightMM = 10; // keep logo size fixed regardless of the custom-info band height
-                    const logoH = logoHeightMM * MM_TO_PX;
-                    const logoW = logoImg.width * (logoH / logoImg.height);
+                const shopNameSize = identityRowHeightPx * 0.10;
+                ctx.font = `bold ${shopNameSize}px sans-serif`;
+                const shopNameW = ctx.measureText(config?.shopName || "").width;
 
-                    const shopNameSize = identityRowHeightPx * 0.10;
-                    ctx.font = `bold ${shopNameSize}px sans-serif`;
-                    const shopNameW = ctx.measureText(config?.shopName || "").width;
+                const maxWidth = Math.max(logoW, shopNameW);
+                const gap = 2 * MM_TO_PX;
+                const totalGroupH = logoH + gap + shopNameSize;
+                const groupStartY = identityRowY + (identityRowHeightPx - totalGroupH) / 2;
+                const groupCenterX = paddingPx + maxWidth / 2;
 
-                    const maxWidth = Math.max(logoW, shopNameW);
-                    const gap = 2 * MM_TO_PX;
-                    const totalGroupH = logoH + gap + shopNameSize;
-                    const groupStartY = identityRowY + (identityRowHeightPx - totalGroupH) / 2;
-                    const groupCenterX = paddingPx + maxWidth / 2;
+                ctx.drawImage(logoImg, groupCenterX - logoW / 2, groupStartY, logoW, logoH);
 
-                    ctx.drawImage(logoImg, groupCenterX - logoW / 2, groupStartY, logoW, logoH);
-
-                    ctx.fillStyle = photo.settings.info?.color || '#000000';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'top';
-                    ctx.fillText(config?.shopName || "", groupCenterX, groupStartY + logoH + gap);
-
-                    leftContentRightX += maxWidth + paddingPx;
-                } else {
-                    ctx.fillStyle = photo.settings.info?.color || '#000000';
-                    const fontSize = hasCustomInfo ? 8 * MM_TO_PX : 6 * MM_TO_PX;
-                    ctx.font = `bold ${fontSize}px sans-serif`;
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(config?.shopName || "", paddingPx, identityRowY + identityRowHeightPx / 2);
-                    leftContentRightX += ctx.measureText(config?.shopName || "").width + paddingPx;
-                }
-
-                // --- QR (Right) ---
-                const qrSizeMM = 12; // keep QR size fixed regardless of the custom-info band height
-                const qrSize = qrSizeMM * MM_TO_PX;
-                qrX = canvas.width - qrSize - paddingPx;
-                const qrY = identityRowY + (identityRowHeightPx - qrSize) / 2;
-
-                if (qrImg) {
-                    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-                }
+                ctx.fillStyle = photo.settings.info?.color || '#000000';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(config?.shopName || "", groupCenterX, groupStartY + logoH + gap);
+            } else {
+                ctx.fillStyle = photo.settings.info?.color || '#000000';
+                const fontSize = hasCustomInfo ? 8 * MM_TO_PX : 6 * MM_TO_PX;
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(config?.shopName || "", paddingPx, identityRowY + identityRowHeightPx / 2);
             }
 
-            // --- CENTER CONTENT ---
-            const contentStartX = leftContentRightX;
-            const contentEndX = showQrFooter ? qrX - paddingPx : canvas.width - paddingPx;
-            const contentWidth = contentEndX - contentStartX;
-            // When the identity row (logo/shop-name/QR) is showing and the band is taller
-            // than its fixed height, keep the custom text in the extra space above it
-            // instead of centering across the whole band (which would overlap that row).
-            const centerY = (showQrFooter && footerHeightPx > identityRowHeightPx)
-                ? (footerY + identityRowY) / 2
-                : footerY + footerHeightPx / 2;
+            // --- QR (Right) ---
+            const qrSizeMM = 12;
+            const qrSize = qrSizeMM * MM_TO_PX;
+            const qrX = canvas.width - qrSize - paddingPx;
+            const qrY = identityRowY + (identityRowHeightPx - qrSize) / 2;
 
-            ctx.fillStyle = photo.settings.info?.color || '#000000';
-            
-            if (hasCustomInfo) {
-                const fontSizePt = photo.settings.info.fontSize || 20;
-                const fontSizePx = fontSizePt * 1.33 * (DPI / 96); 
-                ctx.font = `bold ${fontSizePx}px sans-serif`;
-                ctx.textBaseline = 'middle';
-                const text = photo.settings.info.text;
-                const alignment = photo.settings.info.alignment || 'center';
-                const lines = text.split('\n');
-                const lineHeight = fontSizePx * 1.2;
-                const totalTextHeight = lines.length * lineHeight;
-                let currentTextY = centerY - (totalTextHeight / 2) + (lineHeight/2);
-
-                lines.forEach(line => {
-                    let textX = contentStartX;
-                    if (alignment === 'center') {
-                        ctx.textAlign = 'center';
-                        textX = contentStartX + contentWidth / 2;
-                    } else if (alignment === 'right') {
-                        ctx.textAlign = 'right';
-                        textX = contentEndX;
-                    } else {
-                        ctx.textAlign = 'left';
-                    }
-                    ctx.fillText(line, textX, currentTextY, contentWidth);
-                    currentTextY += lineHeight;
-                });
+            if (qrImg) {
+                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
             }
             }
         } else {
