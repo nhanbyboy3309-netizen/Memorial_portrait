@@ -244,6 +244,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   // on the 20x30 layout, which is the only size that ever draws this band.
   const infoBandVisible = settings.size === PhotoSize.SIZE_20X30 && !!settings.info?.enabled && !!settings.info?.text?.trim();
   const infoBandHeightPct = ((config.infoBandHeightCm ?? 4) / 30) * 100;
+  // The logo/shop-name/QR row (baked in at print time) always occupies a fixed 2cm at
+  // the very bottom of the band — mirror that here so the text doesn't visually sit
+  // where that row will actually be, matching PrintPreview/PhotoViewer's layout.
+  const identityRowVisible = config.showPrintQrFooter !== false;
+  const identityRowHeightPct = (2 / 30) * 100;
 
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans"
@@ -427,8 +432,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                    height: `${infoBandHeightPct}%`,
                    backgroundColor: config.printQrFooterTransparent ? 'transparent' : '#ffffff',
                    justifyContent: settings.info.alignment === 'left' ? 'flex-start' : settings.info.alignment === 'right' ? 'flex-end' : 'center',
-                   padding: '0 6%'
-                 }}
+                   padding: '0 6%',
+                   paddingBottom: (identityRowVisible && infoBandHeightPct > identityRowHeightPct) ? `${identityRowHeightPct}cqh` : 0
+                 } as React.CSSProperties}
                >
                  <span
                    style={{
