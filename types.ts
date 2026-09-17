@@ -45,14 +45,30 @@ export interface BeautySettings {
   eyebrowIntensity: number;  
   eyelashIntensity: number;  
   contourIntensity: number;  
-  hairVolume: number;        
-  hairStyle?: 'original' | 'short' | 'long'; 
-  hairColor?: string;        
+  hairVolume: number;
+  hairStyle?: 'original' | 'short' | 'long';
+  hairColor?: string;
   makeupStyle: 'natural' | 'grooming';
-  
+
   // New Restoration Demographics
   restorationGender?: 'male' | 'female';
   restorationAge?: 'baby' | 'child' | 'young' | 'middle' | 'old';
+
+  // Tone editing (client-side, luminance-zone tone curve): -100..100, 0 = no change
+  highlightIntensity: number;
+  shadowIntensity: number;
+  midtoneIntensity: number;
+
+  // CMYK color adjustment (client-side, channel-complement shift): 0..100, 0 = no tint
+  cyanIntensity: number;
+  magentaIntensity: number;
+  yellowIntensity: number;
+  keyIntensity: number;
+
+  // Blemish/imperfection removal brush: base64 PNG mask (transparent bg, painted marks),
+  // same pixel dimensions as the source photo. Sent to the AI alongside the photo so it
+  // only retouches the marked spots instead of the whole face.
+  blemishMaskUrl?: string;
 }
 
 export interface InfoSettings {

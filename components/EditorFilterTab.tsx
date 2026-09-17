@@ -73,14 +73,33 @@ const EditorFilterTab: React.FC<EditorFilterTabProps> = ({ settings, onClientBea
                     <span className="text-[8px] font-black text-slate-400 uppercase ml-1">Cường độ tông màu</span>
                     <span className="text-[9px] font-black text-brand-600 mr-1">{settings.beauty.skinToneIntensity}%</span>
                  </div>
-                 <input 
-                  type="range" min="0" max="100" step="10" 
-                  value={settings.beauty.skinToneIntensity} 
-                  onChange={(e) => onClientBeautyChange('skinToneIntensity', Number(e.target.value))} 
-                  className="w-full" 
+                 <input
+                  type="range" min="0" max="100" step="10"
+                  value={settings.beauty.skinToneIntensity}
+                  onChange={(e) => onClientBeautyChange('skinToneIntensity', Number(e.target.value))}
+                  className="w-full"
                 />
             </div>
         )}
+      </div>
+
+      <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 text-center">Sắc độ (Tone)</label>
+        <div className="grid grid-cols-1 gap-2">
+           <QuickAdjust label="Vùng sáng (Highlight)" id="highlightIntensity" value={settings.beauty.highlightIntensity} min="-100" max="100" />
+           <QuickAdjust label="Vùng tối (Shadow)" id="shadowIntensity" value={settings.beauty.shadowIntensity} min="-100" max="100" />
+           <QuickAdjust label="Sắc độ trung gian (Midtones)" id="midtoneIntensity" value={settings.beauty.midtoneIntensity} min="-100" max="100" />
+        </div>
+      </div>
+
+      <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 text-center">Chỉnh màu CMYK</label>
+        <div className="grid grid-cols-1 gap-2">
+           <QuickAdjust label="Cyan" id="cyanIntensity" value={settings.beauty.cyanIntensity} min="0" max="100" />
+           <QuickAdjust label="Magenta" id="magentaIntensity" value={settings.beauty.magentaIntensity} min="0" max="100" />
+           <QuickAdjust label="Yellow" id="yellowIntensity" value={settings.beauty.yellowIntensity} min="0" max="100" />
+           <QuickAdjust label="Key (Đen)" id="keyIntensity" value={settings.beauty.keyIntensity} min="0" max="100" />
+        </div>
       </div>
     </div>
   );

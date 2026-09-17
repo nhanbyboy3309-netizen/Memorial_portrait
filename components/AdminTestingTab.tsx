@@ -42,7 +42,14 @@ const AdminTestingTab: React.FC<AdminTestingTabProps> = ({ form }) => {
       eyelashIntensity: 0,
       contourIntensity: 0,
       hairVolume: 0,
-      makeupStyle: 'natural'
+      makeupStyle: 'natural',
+      highlightIntensity: 0,
+      shadowIntensity: 0,
+      midtoneIntensity: 0,
+      cyanIntensity: 0,
+      magentaIntensity: 0,
+      yellowIntensity: 0,
+      keyIntensity: 0
     }
   });
 

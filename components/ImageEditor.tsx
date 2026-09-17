@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useId } from 'react';
 import { BackgroundType, PhotoSettings, PhotoSize, AppConfig, SkinToneType } from '../types';
 import { processIDPhoto } from '../services/geminiService';
 import { t } from '../services/i18n';
+import { buildToneFilterMarkup, isToneFilterActive } from '../services/toneFilter';
 
 // Sub-components
 import EditorClothingTab from './EditorClothingTab';
@@ -179,9 +180,18 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const handleClientBeautyChange = (key: keyof typeof settings.beauty, value: any) => onUpdateSettings({ ...settings, beauty: { ...settings.beauty, [key]: value } });
   const handleBgChange = (bgType: BackgroundType, hex?: string) => onUpdateSettings({ ...settings, background: bgType, customBackgroundColor: hex });
 
+  const toneFilterId = `tone-filter-${useId()}`;
+  const toneFilterActive = isToneFilterActive(settings.beauty);
+  const toneFilterMarkup = useMemo(
+    () => (toneFilterActive ? buildToneFilterMarkup(toneFilterId, settings.beauty) : ''),
+    [toneFilterId, toneFilterActive, settings.beauty.highlightIntensity, settings.beauty.shadowIntensity,
+     settings.beauty.midtoneIntensity, settings.beauty.cyanIntensity, settings.beauty.magentaIntensity,
+     settings.beauty.yellowIntensity, settings.beauty.keyIntensity]
+  );
+
   const imageFilters = useMemo(() => {
     const { lighting, contrast, skinToneIntensity, skinToneType } = settings.beauty;
-    const brightnessVal = 100 + (lighting * 1.5); 
+    const brightnessVal = 100 + (lighting * 1.5);
     const contrastVal = 100 + (contrast * 1.5);
     let sepia = 0, hue = 0, saturate = 100;
     if (skinToneIntensity > 0) {
@@ -189,8 +199,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         else if (skinToneType === SkinToneType.ROSY) { sepia = skinToneIntensity * 0.15; hue = -10; saturate = 100 + (skinToneIntensity * 0.1); }
         else if (skinToneType === SkinToneType.FAIR) { saturate = 100 - (skinToneIntensity * 0.1); }
     }
-    return `brightness(${brightnessVal}%) contrast(${contrastVal}%) saturate(${saturate}%) sepia(${sepia}%) hue-rotate(${hue}deg)`;
-  }, [settings.beauty]);
+    const base = `brightness(${brightnessVal}%) contrast(${contrastVal}%) saturate(${saturate}%) sepia(${sepia}%) hue-rotate(${hue}deg)`;
+    return toneFilterActive ? `${base} url(#${toneFilterId})` : base;
+  }, [settings.beauty, toneFilterActive, toneFilterId]);
 
   const handleFinish = () => {
     const finishExport = (imgSrc: string) => {
@@ -226,6 +237,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
        onMouseUp={() => { isDraggingRef.current = false; }}
        onTouchEnd={() => { isDraggingRef.current = false; }}
     >
+      {toneFilterActive && (
+        <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+          <defs dangerouslySetInnerHTML={{ __html: toneFilterMarkup }} />
+        </svg>
+      )}
       {isCropping && (
         <ManualCropper 
             imageSrc={processedUrl}
