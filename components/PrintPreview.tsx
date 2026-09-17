@@ -83,12 +83,19 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
             // logo/id/QR strip — it must still render even when that strip is off.
             if (!showQrFooter && !hasCustomInfo) return canvas.toDataURL('image/png');
 
+            const BASE_FOOTER_HEIGHT_MM = 20;
             const infoBandHeightMM = (config.infoBandHeightCm ?? 4) * 10;
-            const footerHeightMM = hasCustomInfo ? infoBandHeightMM : 20;
+            const footerHeightMM = hasCustomInfo ? infoBandHeightMM : BASE_FOOTER_HEIGHT_MM;
             const footerHeightPx = footerHeightMM * MM_TO_PX;
 
             // Footer aligns to bottom of paper, but we want to restrict width to photo width
             const footerY = canvas.height - footerHeightPx;
+
+            // Logo/shop-name/QR always sit in this fixed-height row anchored to the photo's
+            // bottom edge — same position as when there's no custom info (20mm band) — so a
+            // taller info band never shifts or resizes them; it only adds room above them.
+            const identityRowHeightPx = BASE_FOOTER_HEIGHT_MM * MM_TO_PX;
+            const identityRowY = canvas.height - identityRowHeightPx;
 
             // Draw Footer Background (White Overlay) RESTRICTED TO PHOTO WIDTH
             // — skipped when printQrFooterTransparent is on, so the logo/id/QR are
@@ -116,14 +123,14 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                     const logoH = logoHeightMM * MM_TO_PX;
                     const logoW = logoImg.width * (logoH / logoImg.height);
 
-                    const shopNameSize = footerHeightPx * 0.10;
+                    const shopNameSize = identityRowHeightPx * 0.10;
                     ctx.font = `bold ${shopNameSize}px sans-serif`;
                     const shopNameW = ctx.measureText(config.shopName).width;
 
                     const maxWidth = Math.max(logoW, shopNameW);
                     const gap = 2 * MM_TO_PX;
                     const totalGroupH = logoH + gap + shopNameSize;
-                    const groupStartY = footerY + (footerHeightPx - totalGroupH) / 2;
+                    const groupStartY = identityRowY + (identityRowHeightPx - totalGroupH) / 2;
                     const groupCenterX = contentLeft + maxWidth / 2;
 
                     ctx.drawImage(logoImg, groupCenterX - logoW / 2, groupStartY, logoW, logoH);
@@ -140,7 +147,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                     ctx.font = `bold ${fontSize}px sans-serif`;
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(config.shopName, contentLeft, footerY + footerHeightPx / 2);
+                    ctx.fillText(config.shopName, contentLeft, identityRowY + identityRowHeightPx / 2);
                     leftContentRightX += ctx.measureText(config.shopName).width + paddingPx;
                 }
 
@@ -148,7 +155,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                 const qrSizeMM = 12; // keep QR size fixed regardless of the custom-info band height
                 const qrSize = qrSizeMM * MM_TO_PX;
                 qrX = contentRight - qrSize;
-                const qrY = footerY + (footerHeightPx - qrSize) / 2;
+                const qrY = identityRowY + (identityRowHeightPx - qrSize) / 2;
 
                 if (qrImg) {
                     ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
@@ -159,7 +166,12 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
             const contentStartX = leftContentRightX;
             const contentEndX = (showQrFooter ? qrX : contentRight) - (showQrFooter ? paddingPx : 0);
             const contentWidth = contentEndX - contentStartX;
-            const centerY = footerY + footerHeightPx / 2;
+            // When the identity row (logo/shop-name/QR) is showing and the band is taller
+            // than its fixed height, keep the custom text in the extra space above it
+            // instead of centering across the whole band (which would overlap that row).
+            const centerY = (showQrFooter && footerHeightPx > identityRowHeightPx)
+                ? (footerY + identityRowY) / 2
+                : footerY + footerHeightPx / 2;
 
             ctx.fillStyle = settings.info?.color || '#000000';
             
