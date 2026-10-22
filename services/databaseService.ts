@@ -8,11 +8,33 @@ const getScriptUrl = (overrideUrl?: string) => {
     return (config.googleScriptUrl || '').trim();
 };
 
+// Safe JSON parser that catches Google HTML error pages
+const safeParseJson = (text: string): { success: boolean; data?: any; error?: string } => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        return { success: false, error: "Empty response" };
+    }
+    if (trimmed.startsWith('<') || trimmed.includes('<!DOCTYPE') || trimmed.includes('<html')) {
+        let msg = "Google Apps Script returned an HTML page instead of JSON";
+        if (trimmed.includes("找不到網頁") || trimmed.includes("Không tìm thấy") || trimmed.includes("404")) {
+            msg = "Google Apps Script 404: Script deployment not found or was deleted";
+        } else if (trimmed.includes("accounts.google.com") || trimmed.includes("Sign in")) {
+            msg = "Google Apps Script authentication required (Must set access to 'Anyone')";
+        }
+        return { success: false, error: msg };
+    }
+    try {
+        const parsed = JSON.parse(trimmed);
+        return { success: true, data: parsed };
+    } catch (e: any) {
+        return { success: false, error: `Invalid JSON: ${e.message}` };
+    }
+};
+
 const callAppsScript = async (action: string, payload: any = {}, overrideUrl?: string): Promise<any> => {
     const url = getScriptUrl(overrideUrl);
     if (!url) {
-        console.error(`Apps Script Error: Missing URL for [${action}]`);
-        return { success: false, error: "Missing URL" };
+        return { success: false, error: "Missing Google Apps Script URL" };
     }
 
     try {
@@ -22,40 +44,95 @@ const callAppsScript = async (action: string, payload: any = {}, overrideUrl?: s
             _t: Date.now() 
         });
 
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000); // 12s timeout
+
         const response = await fetch(url, {
             method: 'POST',
             body: body,
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            redirect: 'follow',
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error(`Apps Script Network Error [${action}]:`, error);
+        const text = await response.text();
+        const parsed = safeParseJson(text);
+
+        if (!parsed.success) {
+            console.warn(`[databaseService] Apps Script Error [${action}]: ${parsed.error}`);
+            return { success: false, error: parsed.error };
+        }
+
+        return parsed.data;
+    } catch (error: any) {
+        console.warn(`[databaseService] Apps Script Network Error [${action}]:`, error.message || error);
         return { success: false, error: String(error) };
     }
 };
 
-export const savePhotoToCloud = async (photo: SavedPhoto, overrideUrl?: string): Promise<string | null> => {
-    // Quan trọng: Gửi kèm ID (sessionId) để Apps Script lưu chính xác vào cột ID
-    const result = await callAppsScript('savePhoto', {
-        id: photo.id,
-        dataUrl: photo.dataUrl,
-        settings: photo.settings,
-        timestamp: photo.timestamp || Date.now()
-    }, overrideUrl);
-    return (result && result.success) ? (result.id || photo.id) : null;
+// === LOCAL SERVER STORAGE FALLBACK HELPERS ===
+const savePhotoToServer = async (photo: SavedPhoto): Promise<boolean> => {
+    try {
+        const resp = await fetch('/api/photos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(photo)
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            return !!(data && data.success);
+        }
+    } catch (e) {
+        console.warn('[databaseService] Local server save failed:', e);
+    }
+    return false;
 };
 
-// Ảnh lưu qua Google Apps Script giờ được upload lên Drive và trả về DẠNG LINK
-// (không còn là chuỗi base64 như trước — xem GoogleAppsScript.js/uploadDataUrlToDrive).
-// Mọi nơi tiêu thụ ảnh lấy từ getPhotoById (đặc biệt là luồng "Dùng điện thoại" đưa
-// thẳng vào trình chỉnh sửa/AI) đều giả định dataUrl là "data:image/...;base64,..." —
-// gửi thẳng một URL cho canvas (lỗi "tainted canvas") hoặc cho AI xử lý ảnh (Gemini
-// nhận về một chuỗi URL thay vì byte ảnh) sẽ thất bại hoàn toàn. Chuẩn hoá về base64
-// ngay tại đây để phần còn lại của app không cần biết ảnh đến từ Sheet hay từ Drive.
+const getPhotoFromServer = async (id: string): Promise<SavedPhoto | null> => {
+    try {
+        const resp = await fetch(`/api/photos/${encodeURIComponent(id)}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.success && data.photo) {
+                return data.photo as SavedPhoto;
+            }
+        }
+    } catch (e) {
+        console.warn('[databaseService] Local server fetch failed:', e);
+    }
+    return null;
+};
+
+const listPhotosFromServer = async (): Promise<SavedPhoto[]> => {
+    try {
+        const resp = await fetch('/api/photos');
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.success && Array.isArray(data.photos)) {
+                return data.photos as SavedPhoto[];
+            }
+        }
+    } catch (e) {
+        console.warn('[databaseService] Local server list failed:', e);
+    }
+    return [];
+};
+
+const deletePhotoFromServer = async (id: string): Promise<boolean> => {
+    try {
+        const resp = await fetch(`/api/photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (resp.ok) {
+            const data = await resp.json();
+            return !!(data && data.success);
+        }
+    } catch (e) {
+        console.warn('[databaseService] Local server delete failed:', e);
+    }
+    return false;
+};
+
+// Helper: Normalize URL to base64 if needed
 const toDataUrl = async (url: string): Promise<string> => {
     if (!url || url.indexOf('data:') === 0) return url;
     const response = await fetch(url);
@@ -68,10 +145,73 @@ const toDataUrl = async (url: string): Promise<string> => {
     });
 };
 
-export const getPhotoById = async (id: string, overrideUrl?: string, skipRetry: boolean = false): Promise<SavedPhoto | null> => {
-    // Tăng cường số lần thử và độ trễ để đợi Apps Script xử lý xong (Cold Start)
-    const maxRetries = skipRetry ? 1 : 5;
+/**
+ * Save photo to Cloud with guaranteed server fallback:
+ * 1. Tries Google Apps Script if URL is configured.
+ * 2. Saves to local server (/api/photos) as fallback/backup.
+ * 3. Returns photo ID on success so QR code and mobile link always work.
+ */
+export const savePhotoToCloud = async (photo: SavedPhoto, overrideUrl?: string): Promise<string | null> => {
+    const photoId = photo.id || `IMG_${Date.now()}`;
+    const payloadPhoto: SavedPhoto = {
+        ...photo,
+        id: photoId,
+        timestamp: photo.timestamp || Date.now()
+    };
 
+    let appsScriptSuccess = false;
+    const scriptUrl = getScriptUrl(overrideUrl);
+
+    // Try Google Apps Script if URL configured
+    if (scriptUrl) {
+        try {
+            const result = await callAppsScript('savePhoto', {
+                id: payloadPhoto.id,
+                dataUrl: payloadPhoto.dataUrl,
+                settings: payloadPhoto.settings,
+                timestamp: payloadPhoto.timestamp
+            }, overrideUrl);
+
+            if (result && result.success) {
+                appsScriptSuccess = true;
+            }
+        } catch (e) {
+            console.warn('[databaseService] Google Apps Script save attempt failed:', e);
+        }
+    }
+
+    // Always mirror to server storage for guaranteed availability & fast retrieval
+    const serverSuccess = await savePhotoToServer(payloadPhoto);
+
+    if (appsScriptSuccess || serverSuccess) {
+        return photoId;
+    }
+
+    console.error('[databaseService] Both Apps Script and server fallback failed to save photo');
+    return null;
+};
+
+/**
+ * Get photo by ID:
+ * 1. Checks fast local server storage first.
+ * 2. If not found locally, queries Google Apps Script.
+ */
+export const getPhotoById = async (id: string, overrideUrl?: string, skipRetry: boolean = false): Promise<SavedPhoto | null> => {
+    if (!id) return null;
+
+    // Check server storage first (fastest)
+    const localPhoto = await getPhotoFromServer(id);
+    if (localPhoto) {
+        try {
+            localPhoto.dataUrl = await toDataUrl(localPhoto.dataUrl);
+        } catch (e) {
+            console.error('[databaseService] Failed to normalize local photo dataUrl:', e);
+        }
+        return localPhoto;
+    }
+
+    // Otherwise check Google Apps Script
+    const maxRetries = skipRetry ? 1 : 4;
     for (let i = 0; i < maxRetries; i++) {
         const result = await callAppsScript('getPhoto', { id }, overrideUrl);
         if (result && result.success && result.photo) {
@@ -79,15 +219,18 @@ export const getPhotoById = async (id: string, overrideUrl?: string, skipRetry: 
             try {
                 photo.dataUrl = await toDataUrl(photo.dataUrl);
             } catch (e) {
-                console.error('Failed to normalize photo URL to base64:', e);
+                console.error('[databaseService] Failed to normalize photo URL to base64:', e);
             }
+            // Cache locally for subsequent fast loads
+            savePhotoToServer(photo).catch(() => {});
             return photo;
         }
 
         if (i < maxRetries - 1) {
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 1200));
         }
     }
+
     return null;
 };
 
@@ -102,14 +245,59 @@ export const getAppConfigFromCloud = async (): Promise<AppConfig | null> => {
 };
 
 export const getPhotosFromCloud = async (): Promise<SavedPhoto[]> => {
-    const result = await callAppsScript('listPhotos');
-    if (result && result.success && Array.isArray(result.photos)) {
-        return result.photos;
+    const [appsScriptResult, serverPhotos] = await Promise.all([
+        callAppsScript('listPhotos').catch(() => null),
+        listPhotosFromServer().catch(() => [])
+    ]);
+
+    const photoMap = new Map<string, SavedPhoto>();
+
+    // Add server photos
+    for (const p of serverPhotos) {
+        if (p && p.id) photoMap.set(p.id, p);
     }
-    return [];
+
+    // Merge Apps Script photos
+    if (appsScriptResult && appsScriptResult.success && Array.isArray(appsScriptResult.photos)) {
+        for (const p of appsScriptResult.photos) {
+            if (p && p.id && !photoMap.has(p.id)) {
+                photoMap.set(p.id, p);
+            }
+        }
+    }
+
+    return Array.from(photoMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 };
 
 export const deletePhotoFromCloud = async (id: string, adminPassword?: string): Promise<boolean> => {
-    const result = await callAppsScript('deletePhoto', { id, password: adminPassword });
-    return !!(result && result.success);
+    const [cloudRes, serverRes] = await Promise.all([
+        callAppsScript('deletePhoto', { id, password: adminPassword }).catch(() => ({ success: false })),
+        deletePhotoFromServer(id).catch(() => false)
+    ]);
+    return !!(cloudRes?.success || serverRes);
+};
+
+/**
+ * Diagnostic tool: Test a Google Apps Script URL via backend proxy
+ */
+export const testGoogleScriptConnection = async (url: string): Promise<{
+    success: boolean;
+    statusCode?: number;
+    isHtml?: boolean;
+    message?: string;
+    error?: string;
+}> => {
+    try {
+        const resp = await fetch('/api/cloud/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        return await resp.json();
+    } catch (e: any) {
+        return {
+            success: false,
+            error: `Lỗi kết nối máy chủ: ${e.message || String(e)}`
+        };
+    }
 };

@@ -1,11 +1,62 @@
 import express from "express";
 import path from "path";
 import cors from "cors";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { BackgroundType, BeautySettings } from "./types";
 
 const clamp = (v: number, max = 30) => Math.min(Math.max(v, 0), max);
+
+// === LOCAL PERSISTENT PHOTO STORAGE FALLBACK ===
+const DATA_DIR = path.join(process.cwd(), ".data");
+const PHOTOS_FILE = path.join(DATA_DIR, "photos.json");
+
+interface ServerSavedPhoto {
+  id: string;
+  dataUrl: string;
+  timestamp: number;
+  settings?: any;
+}
+
+const photoStore = new Map<string, ServerSavedPhoto>();
+
+function initPhotoStorage() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(PHOTOS_FILE)) {
+      const content = fs.readFileSync(PHOTOS_FILE, "utf-8");
+      const list: ServerSavedPhoto[] = JSON.parse(content);
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item && item.id) {
+            photoStore.set(item.id, item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[PhotoStorage] Warning reading photos.json:", err);
+  }
+}
+
+function persistPhotoStorage() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const all = Array.from(photoStore.values())
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 100); // Keep 100 most recent
+    fs.writeFileSync(PHOTOS_FILE, JSON.stringify(all), "utf-8");
+  } catch (err) {
+    console.warn("[PhotoStorage] Warning saving photos.json:", err);
+  }
+}
+
+initPhotoStorage();
 
 async function startServer() {
   const app = express();
@@ -16,7 +67,144 @@ async function startServer() {
 
   // API Routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    res.json({ status: "ok", totalPhotos: photoStore.size });
+  });
+
+  // Local Photo Storage Endpoints (Server Fallback for Cloud Sync)
+  app.post("/api/photos", (req, res) => {
+    try {
+      const { id, dataUrl, settings, timestamp } = req.body;
+      if (!id || !dataUrl) {
+        return res.status(400).json({ success: false, error: "Missing id or dataUrl" });
+      }
+      const photo: ServerSavedPhoto = {
+        id: String(id),
+        dataUrl,
+        timestamp: Number(timestamp) || Date.now(),
+        settings: settings || {}
+      };
+      photoStore.set(photo.id, photo);
+      persistPhotoStorage();
+      console.log(`[PhotoStorage] Saved photo ${photo.id} (total: ${photoStore.size})`);
+      res.json({ success: true, id: photo.id });
+    } catch (err: any) {
+      console.error("[PhotoStorage] Save error:", err);
+      res.status(500).json({ success: false, error: err.message || "Failed to save photo" });
+    }
+  });
+
+  app.get("/api/photos/:id", (req, res) => {
+    const photo = photoStore.get(req.params.id);
+    if (!photo) {
+      return res.status(404).json({ success: false, error: "Photo not found" });
+    }
+    res.json({ success: true, photo });
+  });
+
+  app.get("/api/photos", (req, res) => {
+    const photos = Array.from(photoStore.values())
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 50);
+    res.json({ success: true, photos });
+  });
+
+  app.delete("/api/photos/:id", (req, res) => {
+    const id = req.params.id;
+    const exists = photoStore.has(id);
+    if (exists) {
+      photoStore.delete(id);
+      persistPhotoStorage();
+      return res.json({ success: true });
+    }
+    res.json({ success: false, error: "Not found" });
+  });
+
+  // Diagnostic Endpoint for Testing Google Apps Script URL
+  app.post("/api/cloud/test", async (req, res) => {
+    const { url } = req.body;
+    if (!url || typeof url !== "string" || !url.startsWith("http")) {
+      return res.status(400).json({
+        success: false,
+        error: "URL không hợp lệ. Vui lòng nhập link Google Apps Script bắt đầu bằng https://"
+      });
+    }
+
+    try {
+      const testPayload = JSON.stringify({ action: "getConfig", _t: Date.now() });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(url.trim(), {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: testPayload,
+        redirect: "follow",
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      const status = response.status;
+      const text = await response.text();
+      const trimmed = text.trim();
+      const isHtml = trimmed.startsWith("<") || trimmed.includes("<!DOCTYPE") || trimmed.includes("<html");
+
+      if (isHtml) {
+        if (
+          trimmed.includes("找不到網頁") ||
+          trimmed.includes("Không tìm thấy") ||
+          trimmed.includes("404") ||
+          status === 404
+        ) {
+          return res.json({
+            success: false,
+            statusCode: status,
+            isHtml: true,
+            error: "Google trả về 404: Không tìm thấy triển khai Apps Script này. URL có thể đã bị xóa hoặc chưa được tạo bản triển khai mới."
+          });
+        }
+        if (
+          trimmed.includes("Sign in") ||
+          trimmed.includes("Đăng nhập") ||
+          trimmed.includes("accounts.google.com")
+        ) {
+          return res.json({
+            success: false,
+            statusCode: status,
+            isHtml: true,
+            error: "Google yêu cầu đăng nhập: Quyền truy cập Web App chưa được chọn 'Anyone' (Bất kỳ ai)."
+          });
+        }
+        return res.json({
+          success: false,
+          statusCode: status,
+          isHtml: true,
+          error: "Google trả về trang HTML thay vì JSON. Vui lòng kiểm tra lại cấu hình Web App trong Google Apps Script."
+        });
+      }
+
+      try {
+        const json = JSON.parse(trimmed);
+        return res.json({
+          success: true,
+          statusCode: status,
+          isHtml: false,
+          message: "Kết nối Google Apps Script thành công!",
+          data: json
+        });
+      } catch {
+        return res.json({
+          success: false,
+          statusCode: status,
+          isHtml: false,
+          error: `Dữ liệu trả về không phải JSON hợp lệ: ${trimmed.substring(0, 100)}`
+        });
+      }
+    } catch (err: any) {
+      return res.json({
+        success: false,
+        error: `Không thể kết nối đến Google Apps Script: ${err.message || String(err)}`
+      });
+    }
   });
 
   const getAI = () => {

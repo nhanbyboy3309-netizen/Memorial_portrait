@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { PhotoSettings, PhotoSize, AppConfig, BackgroundType } from '../types';
 import { savePhotoToCloud } from '../services/databaseService';
@@ -18,10 +18,11 @@ interface PrintPreviewProps {
   onSaved?: () => void;
   onHome: () => void;
   config: AppConfig;
+  isActive?: boolean;
 }
 
 const PrintPreview: React.FC<PrintPreviewProps> = ({ 
-  processedImage, size, settings, onBack, onNew, onHome, config
+  processedImage, size, settings, onBack, onNew, onHome, config, isActive = true
 }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -205,11 +206,9 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
   };
 
   useEffect(() => {
+     if (!processedImage) return;
      // Generate the printable sheets as soon as the photo is ready, regardless of
-     // whether the cloud save (below) has finished or even succeeded — this used
-     // to be gated on qrUrl, which only gets set after a successful cloud save,
-     // so a failed/slow cloud save left the whole print screen stuck on its
-     // loading spinner forever with no image to print or download.
+     // whether the cloud save (below) has finished or even succeeded
      (async () => {
          try {
              const [p, l, q] = await Promise.all([
@@ -228,9 +227,13 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
      })();
   }, [qrUrl, processedImage, totalSheets, config]);
 
+  const lastSavedImageRef = useRef<string>('');
   useEffect(() => {
+    if (!processedImage || processedImage === lastSavedImageRef.current) return;
+    lastSavedImageRef.current = processedImage;
     (async () => {
       setIsSaving(true);
+      setSaveError(false);
       const uniqueId = `${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`.toUpperCase();
       const savedId = await savePhotoToCloud({ id: uniqueId, dataUrl: processedImage, timestamp: Date.now(), settings });
       if (savedId) {
@@ -242,17 +245,23 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
       }
       setIsSaving(false);
     })();
-  }, []);
+  }, [processedImage, settings]);
 
   const handleDownload = () => { sheetImages.forEach((d, i) => { const l = document.createElement('a'); l.href = d; l.download = `A4-Photo-Sheet-${i+1}.png`; l.click(); }); };
 
   return (
     <div className="flex flex-col h-full bg-slate-100 dark:bg-gray-900 relative min-h-[100dvh]">
-      {document.getElementById('print-mount') && createPortal(<div className="print-portal-root">{printImages.map((s, i) => <div key={i} className="sheet-page"><img src={s} alt="" /></div>)}</div>, document.getElementById('print-mount')!)}
+      {isActive && document.getElementById('print-mount') && createPortal(<div className="print-portal-root">{printImages.map((s, i) => <div key={i} className="sheet-page"><img src={s} alt="" /></div>)}</div>, document.getElementById('print-mount')!)}
       
       <header className="bg-white dark:bg-gray-800 shadow-sm p-4 flex justify-between items-center z-20 shrink-0 sticky top-0">
         <h1 className="text-lg md:text-xl font-extrabold text-slate-800 dark:text-white flex items-center gap-2">🖨️ {t('print.header', config)}</h1>
-        <button onClick={onBack} className="px-3 py-1.5 md:px-4 md:py-2 text-sm font-bold text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 rounded-lg">{t('btn.back', config)}</button>
+        <button 
+          onClick={onBack} 
+          className="px-3 py-1.5 md:px-4 md:py-2 text-sm font-bold text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 rounded-lg flex items-center gap-1.5 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
+          <span>{t('btn.back', config)}</span>
+        </button>
       </header>
       
       {/* Scrollable Container */}
@@ -275,6 +284,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                 config={config}
                 onPrint={() => window.print()}
                 onDownload={handleDownload}
+                onBack={onBack}
                 onHome={onHome}
             />
         </div>

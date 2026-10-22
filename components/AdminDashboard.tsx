@@ -33,16 +33,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentConfig, onUpdate
   const handleSave = async () => {
     setIsSyncing(true);
     setSaveStatus(t('status.syncing', form));
-    
-    if (!form.googleScriptUrl || !form.googleScriptUrl.startsWith('https://script.google.com')) {
-        setIsSyncing(false);
-        setSaveStatus('Lỗi URL');
-        alert("Lỗi: URL Google Script không hợp lệ.");
-        return;
-    }
 
+    // Luôn lưu cấu hình nội bộ trước để không bao giờ bị mất dữ liệu
     saveConfig(form);
     onUpdateConfig(form);
+
+    const hasValidScriptUrl = form.googleScriptUrl && form.googleScriptUrl.trim().startsWith('https://script.google.com');
+
+    if (!hasValidScriptUrl) {
+      setIsSyncing(false);
+      setSaveStatus('✔ Local OK');
+      setTimeout(() => setSaveStatus(''), 4000);
+      return;
+    }
 
     try {
         const success = await saveAppConfigToCloud(form);
@@ -51,7 +54,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentConfig, onUpdate
             setSaveStatus('⚠️ Local OK');
         }
     } catch (e) {
-        setSaveStatus('❌ Error');
+        setSaveStatus('⚠️ Local OK');
     } finally {
         setIsSyncing(false);
         setTimeout(() => setSaveStatus(''), 5000);

@@ -1,20 +1,90 @@
-
 /**
- * ID PHOTO BOOTH PRO - BACKEND ENGINE
- * Dành cho Google Apps Script
+ * =========================================================================
+ * ID PHOTO BOOTH PRO - GOOGLE APPS SCRIPT CLOUD BACKEND ENGINE
+ * =========================================================================
+ * HƯỚNG DẪN CÀI ĐẶT (SETUP GUIDE):
+ * 
+ * BƯỚC 1: Tạo một Google Sheet mới trên Google Drive (drive.google.com).
+ * BƯỚC 2: Vào menu: Tiện ích mở rộng (Extensions) > Apps Script.
+ * BƯỚC 3: Xóa hết code mặc định, dán toàn bộ nội dung file này vào editor.
+ * BƯỚC 4: Nhấn nút "Triển khai" (Deploy) ở góc trên bên phải > "Tùy chọn triển khai mới" (New deployment).
+ *         - Loại (Type): Web app (Ứng dụng web)
+ *         - Mô tả (Description): ID Photo Booth v1
+ *         - Thực thi dưới dạng (Execute as): "Tôi" (Me)
+ *         - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone)  <-- CỰC KỲ QUAN TRỌNG!
+ * BƯỚC 5: Nhấn "Triển khai" (Deploy), cấp quyền truy cập tài khoản Google khi được hỏi.
+ * BƯỚC 6: Sao chép URL của Ứng dụng web (kết thúc bằng /exec) và dán vào phần
+ *         "Cấu hình hệ thống > Google Apps Script URL" trong trang Quản trị (Admin).
+ * =========================================================================
  */
 
-// Optional: ID thư mục Google Drive để lưu ảnh (để trống = lưu vào My Drive gốc)
+// Tuỳ chọn 1: ID Google Sheet nếu dùng Apps Script độc lập (Standalone Script).
+// Để trống nếu tạo Apps Script trực tiếp từ menu "Tiện ích mở rộng > Apps Script" của Google Sheet.
+var SPREADSHEET_ID = "";
+
+// Tuỳ chọn 2: ID thư mục Google Drive để lưu ảnh (để trống = lưu vào My Drive gốc).
 var DRIVE_FOLDER_ID = "";
 
+/**
+ * Lấy đối tượng Spreadsheet an toàn (hỗ trợ cả Bound Script lẫn Standalone Script)
+ */
+function getSpreadsheet() {
+  if (SPREADSHEET_ID && SPREADSHEET_ID.trim() !== "") {
+    return SpreadsheetApp.openById(SPREADSHEET_ID.trim());
+  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error("Không tìm thấy Google Sheet. Nếu bạn tạo Standalone Apps Script, vui lòng nhập SPREADSHEET_ID ở đầu file.");
+  }
+  return ss;
+}
+
+/**
+ * Xử lý yêu cầu GET (kiểm tra trạng thái ping, đọc ảnh trực tiếp)
+ */
+function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) || 'ping';
+
+  if (action === 'ping') {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      status: "online",
+      message: "ID Photo Booth Cloud Backend is ready!",
+      timestamp: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'getPhoto' && e.parameter.id) {
+    var photoResult = getPhoto(e.parameter.id);
+    return ContentService.createTextOutput(JSON.stringify(photoResult))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'getConfig') {
+    var configResult = getConfig();
+    return ContentService.createTextOutput(JSON.stringify(configResult))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    name: "ID Photo Booth API",
+    status: "active"
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Xử lý yêu cầu POST (lưu ảnh, lấy ảnh, quản lý danh sách, cấu hình)
+ */
 function doPost(e) {
   var lock = LockService.getScriptLock();
-  lock.tryLock(10000); // Đợi tối đa 10 giây
+  lock.tryLock(15000); // Đợi tối đa 15 giây
   
   try {
-    var data = JSON.parse(e.postData.contents);
+    var contents = (e && e.postData && e.postData.contents) ? e.postData.contents : "{}";
+    var data = JSON.parse(contents);
     var action = data.action;
-    var result = { success: false };
+    var result = { success: false, error: "Unknown action" };
 
     // Khởi tạo các Sheet nếu chưa có
     initSheets();
@@ -31,6 +101,8 @@ function doPost(e) {
       result = saveConfig(data.config);
     } else if (action === 'getConfig') {
       result = getConfig();
+    } else if (action === 'ping') {
+      result = { success: true, status: "online" };
     }
 
     return ContentService.createTextOutput(JSON.stringify(result))
@@ -45,7 +117,7 @@ function doPost(e) {
 }
 
 function initSheets() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   
   // Sheet lưu ảnh
   if (!ss.getSheetByName('Photos')) {
@@ -63,8 +135,6 @@ function initSheets() {
 }
 
 // Upload ảnh base64 (data:image/...;base64,....) lên Google Drive và trả về link xem trực tiếp.
-// Sheet chỉ giới hạn 50.000 ký tự/ô — ảnh base64 (nhất là ảnh 20x30 độ phân giải cao) rất dễ
-// vượt giới hạn này, gây lỗi "Unexpected error ... getValues on object Range" khi đọc lại.
 function uploadDataUrlToDrive(dataUrl, fileName) {
   var splitBase64 = dataUrl.split(',');
   var dataPart = splitBase64.length > 1 ? splitBase64[1] : splitBase64[0];
@@ -74,7 +144,7 @@ function uploadDataUrlToDrive(dataUrl, fileName) {
   var folder;
   if (DRIVE_FOLDER_ID && DRIVE_FOLDER_ID.trim() !== '') {
     try {
-      folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+      folder = DriveApp.getFolderById(DRIVE_FOLDER_ID.trim());
     } catch (e) {
       folder = DriveApp.getRootFolder();
     }
@@ -99,12 +169,12 @@ function deleteDriveFileIfLinked(storedValue) {
   try {
     DriveApp.getFileById(match[1]).setTrashed(true);
   } catch (e) {
-    // File đã bị xoá trước đó hoặc không có quyền — bỏ qua.
+    // Bỏ qua nếu file đã xoá
   }
 }
 
 function savePhoto(data) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Photos');
   var id = data.id || ('IMG_' + new Date().getTime());
 
@@ -119,37 +189,46 @@ function savePhoto(data) {
   }
 
   // Nếu là ảnh base64 thô, upload lên Drive và chỉ lưu link vào Sheet.
-  // Nếu client gửi sẵn 1 URL (đã upload trước đó), giữ nguyên.
   var storedUrl = data.dataUrl;
   if (typeof storedUrl === 'string' && storedUrl.indexOf('data:') === 0) {
-    var uploadResult = uploadDataUrlToDrive(storedUrl, id + '.png');
-    storedUrl = uploadResult.url;
+    try {
+      var uploadResult = uploadDataUrlToDrive(storedUrl, id + '.png');
+      storedUrl = uploadResult.url;
+    } catch (driveErr) {
+      // Nếu Drive quota hết hoặc bị chặn, giữ URL để không mất ảnh
+      Logger.log("Drive upload error: " + driveErr.toString());
+    }
   }
 
   sheet.appendRow([
     id,
     data.timestamp || new Date().getTime(),
     storedUrl,
-    JSON.stringify(data.settings)
+    JSON.stringify(data.settings || {})
   ]);
 
   return { success: true, id: id };
 }
 
 function getPhoto(id) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Photos');
   var rows = sheet.getDataRange().getValues();
   
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] == id) {
+      var settings = {};
+      try {
+        settings = JSON.parse(rows[i][3] || '{}');
+      } catch (e) {}
+      
       return {
         success: true,
         photo: {
           id: rows[i][0],
           timestamp: rows[i][1],
           dataUrl: rows[i][2],
-          settings: JSON.parse(rows[i][3])
+          settings: settings
         }
       };
     }
@@ -158,7 +237,7 @@ function getPhoto(id) {
 }
 
 function listPhotos() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Photos');
   var rows = sheet.getDataRange().getValues();
   var photos = [];
@@ -166,23 +245,29 @@ function listPhotos() {
   // Trả về tối đa 50 ảnh gần nhất
   var start = Math.max(1, rows.length - 50);
   for (var i = rows.length - 1; i >= start; i--) {
+    var settings = {};
+    try {
+      settings = JSON.parse(rows[i][3] || '{}');
+    } catch (e) {}
+
     photos.push({
       id: rows[i][0],
       timestamp: rows[i][1],
       dataUrl: rows[i][2],
-      settings: JSON.parse(rows[i][3])
+      settings: settings
     });
   }
   return { success: true, photos: photos };
 }
 
 function deletePhoto(data) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Photos');
   var rows = sheet.getDataRange().getValues();
   
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] == data.id) {
+      deleteDriveFileIfLinked(rows[i][2]);
       sheet.deleteRow(i + 1);
       return { success: true };
     }
@@ -191,22 +276,24 @@ function deletePhoto(data) {
 }
 
 function saveConfig(config) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Config');
   sheet.clear();
   sheet.appendRow(['Key', 'Value']);
-  sheet.appendRow(['app_settings', JSON.stringify(config)]);
+  sheet.appendRow(['app_settings', JSON.stringify(config || {})]);
   return { success: true };
 }
 
 function getConfig() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Config');
   var rows = sheet.getDataRange().getValues();
   
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] == 'app_settings') {
-      return { success: true, config: JSON.parse(rows[i][1]) };
+      try {
+        return { success: true, config: JSON.parse(rows[i][1]) };
+      } catch (e) {}
     }
   }
   return { success: false };

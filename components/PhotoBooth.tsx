@@ -63,6 +63,7 @@ const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, 
 
   const handleCapture = (imageSrc: string) => {
     setCapturedImage(imageSrc);
+    setProcessedImage('');
     setStep(AppStep.EDIT);
   };
 
@@ -78,6 +79,7 @@ const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, 
 
   const handleRetake = () => {
     setCapturedImage('');
+    setProcessedImage('');
     setStep(AppStep.CAPTURE);
   };
 
@@ -93,29 +95,34 @@ const PhotoBooth: React.FC<PhotoBoothProps> = ({ onSaveToGallery, initialPhoto, 
         />
       )}
       
-      {step === AppStep.EDIT && (
-        <ImageEditor 
-          originalImage={capturedImage}
-          settings={settings}
-          onUpdateSettings={setSettings}
-          onProcessedImage={handleProcessedImage}
-          onNext={() => setStep(AppStep.PRINT)}
-          onRetake={handleRetake}
-          config={config}
-        />
+      {capturedImage && (
+        <div className={step === AppStep.EDIT ? "h-full w-full" : "hidden"}>
+          <ImageEditor 
+            originalImage={capturedImage}
+            settings={settings}
+            onUpdateSettings={setSettings}
+            onProcessedImage={handleProcessedImage}
+            onNext={() => setStep(AppStep.PRINT)}
+            onRetake={handleRetake}
+            config={config}
+          />
+        </div>
       )}
       
-      {step === AppStep.PRINT && (
-        <PrintPreview 
-          processedImage={processedImage}
-          size={settings.size}
-          settings={settings}
-          onBack={() => setStep(AppStep.EDIT)}
-          onNew={resetFlow}
-          onSaved={onSaveToGallery}
-          onHome={onHome}
-          config={config}
-        />
+      {processedImage && (
+        <div className={step === AppStep.PRINT ? "h-full w-full" : "hidden"}>
+          <PrintPreview 
+            processedImage={processedImage}
+            size={settings.size}
+            settings={settings}
+            onBack={() => setStep(AppStep.EDIT)}
+            onNew={resetFlow}
+            onSaved={onSaveToGallery}
+            onHome={onHome}
+            config={config}
+            isActive={step === AppStep.PRINT}
+          />
+        </div>
       )}
     </div>
   );

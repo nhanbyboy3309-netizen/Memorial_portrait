@@ -126,7 +126,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     return currentHash !== appliedHash;
   }, [settings, appliedHash, getAiSettingsHash]);
 
-  const handleApplyAiChanges = useCallback(async () => {
+  const handleApplyAiChanges = useCallback(async (): Promise<string | null> => {
     const currentHash = getAiSettingsHash(settings);
     setIsProcessing(true);
     setLoadingAction(t('editor.loading', config));
@@ -148,6 +148,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
       const newHistoryItem = { url: result, timestamp: Date.now(), label: 'Chỉnh sửa AI' };
       setEditHistory(prev => [...prev, newHistoryItem]);
       setCurrentHistoryIndex(editHistory.length);
+      return result;
 
     } catch (err: any) {
       console.error(err);
@@ -171,6 +172,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
       } else {
         alert("Lỗi xử lý ảnh: " + (err.message || "Không xác định"));
       }
+      return null;
     } finally {
       setIsProcessing(false);
       setLoadingAction('');
@@ -237,9 +239,20 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     };
     if (hasPendingAiChanges) {
         if (confirm("Có thay đổi AI chưa áp dụng. Bạn có muốn áp dụng ngay?")) {
-            handleApplyAiChanges().then(() => finishExport(processedUrl));
+            handleApplyAiChanges().then((newUrl) => finishExport(newUrl || processedUrl));
         } else { finishExport(processedUrl); }
     } else { finishExport(processedUrl); }
+  };
+
+  const handleConfirmRetake = () => {
+    const hasEdits = editHistory.length > 0 || hasPendingAiChanges || baseImage !== originalImage || processedUrl !== originalImage;
+    if (hasEdits) {
+      if (confirm("Bạn có chắc muốn chọn ảnh khác? Mọi chỉnh sửa trên ảnh hiện tại sẽ bị hủy.")) {
+        onRetake();
+      }
+    } else {
+      onRetake();
+    }
   };
 
   const startCrop = () => setIsCropping(true);
@@ -292,8 +305,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
               <h2 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Biên tập ảnh</h2>
               <span className="text-[9px] font-black text-brand-600 uppercase tracking-widest">ID Engine v2.5.2</span>
           </div>
-          <button onClick={onRetake} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 border border-slate-200 dark:border-slate-700">
-            Quay lại
+          <button onClick={handleConfirmRetake} className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 border border-slate-200 dark:border-slate-700">
+            {t('editor.btn.retake', config) || 'Chọn ảnh khác'}
           </button>
         </div>
 
@@ -404,8 +417,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
       {/* Preview Workspace */}
       <div className="flex-1 bg-slate-200 dark:bg-slate-950 relative flex items-center justify-center p-4 md:p-8 h-[45dvh] md:h-full shrink-0 order-1 md:order-2">
         {/* Mobile Retake Button */}
-        <button onClick={onRetake} className="md:hidden absolute top-4 left-4 z-30 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md text-slate-600 dark:text-slate-300 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm">
-          Chụp lại
+        <button onClick={handleConfirmRetake} className="md:hidden absolute top-4 left-4 z-30 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md text-slate-600 dark:text-slate-300 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm">
+          {t('editor.btn.retake', config) || 'Chụp lại'}
         </button>
         {isProcessing && (
           <div className="absolute inset-0 z-40 bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center animate-fadeIn">

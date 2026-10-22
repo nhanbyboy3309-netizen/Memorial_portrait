@@ -13,11 +13,12 @@ interface PrintSidebarProps {
   config: AppConfig;
   onPrint: () => void;
   onDownload: () => void;
+  onBack?: () => void;
   onHome: () => void;
 }
 
 const PrintSidebar: React.FC<PrintSidebarProps> = ({
-  photoId, isSaving, saveError, sheetImages, qrUrl, settings, config, onPrint, onDownload, onHome
+  photoId, isSaving, saveError, sheetImages, qrUrl, settings, config, onPrint, onDownload, onBack, onHome
 }) => {
   return (
     <div className="w-full md:w-80 bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl shadow-xl flex flex-col gap-4 md:gap-6 md:h-fit md:sticky md:top-6">
@@ -80,7 +81,18 @@ const PrintSidebar: React.FC<PrintSidebarProps> = ({
         </div>
       </div>
       
-      <button onClick={onHome} className="w-full p-2 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">{t('btn.home', config)}</button>
+      <div className="flex flex-col gap-2">
+        {onBack && (
+          <button 
+            onClick={onBack} 
+            className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-slate-700 dark:text-gray-200 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 shadow-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"></path></svg>
+            <span>{t('btn.back', config)}</span>
+          </button>
+        )}
+        <button onClick={onHome} className="w-full p-2 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">{t('btn.home', config)}</button>
+      </div>
     </div>
   );
 };
