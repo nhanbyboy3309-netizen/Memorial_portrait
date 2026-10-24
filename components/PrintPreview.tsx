@@ -228,15 +228,19 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
   }, [qrUrl, processedImage, totalSheets, config]);
 
   const lastSavedImageRef = useRef<string>('');
+  // The ID (MPddmmyyNNN) is issued by the backend on the first save. Going Back and
+  // finishing again re-saves the SAME photo, so reuse that ID to overwrite the old copy
+  // instead of burning a new number and leaving a duplicate file on Drive.
+  const issuedIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!processedImage || processedImage === lastSavedImageRef.current) return;
     lastSavedImageRef.current = processedImage;
     (async () => {
       setIsSaving(true);
       setSaveError(false);
-      const uniqueId = `${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`.toUpperCase();
-      const savedId = await savePhotoToCloud({ id: uniqueId, dataUrl: processedImage, timestamp: Date.now(), settings });
+      const savedId = await savePhotoToCloud({ id: issuedIdRef.current, dataUrl: processedImage, timestamp: Date.now(), settings });
       if (savedId) {
+          issuedIdRef.current = savedId;
           setRealPhotoId(savedId);
           const v = `${window.location.href.split('?')[0]}?photoId=${savedId}`;
           setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(v)}&ecc=H`);

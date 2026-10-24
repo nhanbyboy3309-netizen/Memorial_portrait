@@ -119,7 +119,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentConfig, onUpdate
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-black scrollbar-hide">
-          <div className="max-w-4xl mx-auto p-6 lg:p-10 pb-40">
+          <div className="max-w-4xl mx-auto p-6 lg:p-10 pb-40 lg:pb-40">
             <div className="animate-fadeIn">
                 {activeTab === 'system' && (
                   <AdminSystemTab 

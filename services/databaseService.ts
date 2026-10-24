@@ -31,7 +31,7 @@ const safeParseJson = (text: string): { success: boolean; data?: any; error?: st
     }
 };
 
-const callAppsScript = async (action: string, payload: any = {}, overrideUrl?: string): Promise<any> => {
+const callAppsScript = async (action: string, payload: any = {}, overrideUrl?: string, timeoutMs: number = 12000): Promise<any> => {
     const url = getScriptUrl(overrideUrl);
     if (!url) {
         return { success: false, error: "Missing Google Apps Script URL" };
@@ -45,7 +45,7 @@ const callAppsScript = async (action: string, payload: any = {}, overrideUrl?: s
         });
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 12000); // 12s timeout
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -72,7 +72,9 @@ const callAppsScript = async (action: string, payload: any = {}, overrideUrl?: s
 };
 
 // === LOCAL SERVER STORAGE FALLBACK HELPERS ===
-const savePhotoToServer = async (photo: SavedPhoto): Promise<boolean> => {
+// Returns the stored photo's ID, or null on failure. When `photo.id` is missing the
+// server assigns the next MPddmmyyNNN ID itself (see server.ts).
+const savePhotoToServer = async (photo: Omit<SavedPhoto, 'id'> & { id?: string }): Promise<string | null> => {
     try {
         const resp = await fetch('/api/photos', {
             method: 'POST',
@@ -81,12 +83,12 @@ const savePhotoToServer = async (photo: SavedPhoto): Promise<boolean> => {
         });
         if (resp.ok) {
             const data = await resp.json();
-            return !!(data && data.success);
+            if (data && data.success && data.id) return String(data.id);
         }
     } catch (e) {
         console.warn('[databaseService] Local server save failed:', e);
     }
-    return false;
+    return null;
 };
 
 const getPhotoFromServer = async (id: string): Promise<SavedPhoto | null> => {
@@ -145,47 +147,62 @@ const toDataUrl = async (url: string): Promise<string> => {
     });
 };
 
-/**
- * Save photo to Cloud with guaranteed server fallback:
- * 1. Tries Google Apps Script if URL is configured.
- * 2. Saves to local server (/api/photos) as fallback/backup.
- * 3. Returns photo ID on success so QR code and mobile link always work.
- */
-export const savePhotoToCloud = async (photo: SavedPhoto, overrideUrl?: string): Promise<string | null> => {
-    const photoId = photo.id || `IMG_${Date.now()}`;
-    const payloadPhoto: SavedPhoto = {
-        ...photo,
-        id: photoId,
-        timestamp: photo.timestamp || Date.now()
-    };
+// Saving a large photo to Apps Script (Drive upload) can take well over the 12s used
+// for small calls, and aborting mid-way would leave an orphan on Drive and desync IDs.
+const SAVE_PHOTO_TIMEOUT_MS = 90000;
 
+/**
+ * Save photo to Cloud with guaranteed server fallback.
+ *
+ * Photo IDs follow the format MP + ddmmyy + NNN (e.g. MP251025001). When `photo.id`
+ * is omitted a NEW ID is issued: by Google Apps Script when it is reachable (so the
+ * daily sequence is shared by every device and matches what Photo Moments looks up),
+ * otherwise by the local server. Pass an existing `photo.id` to overwrite that photo
+ * (used when the same edit session is finalised again) or for fixed IDs such as the
+ * mobile-upload session handle.
+ *
+ * 1. Tries Google Apps Script if a URL is configured (it issues the ID).
+ * 2. Mirrors to the local server (/api/photos) as fallback/backup, using that ID.
+ * 3. Returns the photo ID on success so the QR code and viewer link always work.
+ */
+export const savePhotoToCloud = async (
+    photo: Omit<SavedPhoto, 'id'> & { id?: string },
+    overrideUrl?: string
+): Promise<string | null> => {
+    const timestamp = photo.timestamp || Date.now();
+    let photoId: string | null = photo.id || null;
     let appsScriptSuccess = false;
-    const scriptUrl = getScriptUrl(overrideUrl);
 
     // Try Google Apps Script if URL configured
-    if (scriptUrl) {
+    if (getScriptUrl(overrideUrl)) {
         try {
             const result = await callAppsScript('savePhoto', {
-                id: payloadPhoto.id,
-                dataUrl: payloadPhoto.dataUrl,
-                settings: payloadPhoto.settings,
-                timestamp: payloadPhoto.timestamp
-            }, overrideUrl);
+                id: photo.id,
+                autoId: !photo.id,
+                dataUrl: photo.dataUrl,
+                settings: photo.settings,
+                timestamp
+            }, overrideUrl, SAVE_PHOTO_TIMEOUT_MS);
 
-            if (result && result.success) {
+            if (result && result.success && result.id) {
                 appsScriptSuccess = true;
+                photoId = String(result.id);
             }
         } catch (e) {
             console.warn('[databaseService] Google Apps Script save attempt failed:', e);
         }
     }
 
-    // Always mirror to server storage for guaranteed availability & fast retrieval
-    const serverSuccess = await savePhotoToServer(payloadPhoto);
+    // Always mirror to server storage for guaranteed availability & fast retrieval.
+    // If Apps Script did not issue an ID, the server issues one here.
+    const serverId = await savePhotoToServer({
+        ...photo,
+        id: photoId || undefined,
+        timestamp
+    });
 
-    if (appsScriptSuccess || serverSuccess) {
-        return photoId;
-    }
+    if (appsScriptSuccess) return photoId;
+    if (serverId) return serverId;
 
     console.error('[databaseService] Both Apps Script and server fallback failed to save photo');
     return null;

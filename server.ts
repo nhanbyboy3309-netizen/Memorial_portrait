@@ -58,6 +58,34 @@ function persistPhotoStorage() {
 
 initPhotoStorage();
 
+// === PHOTO ID: MP + ddmmyy + NNN (e.g. MP251025001) ===
+// "MP" is fixed, ddmmyy is today's date in Vietnam time, NNN is that day's running number
+// (001, 002, ...; grows to 4+ digits only if a day exceeds 999 photos).
+const lastSeqByDay = new Map<string, number>(); // never hand out a number twice in one process, even after deletes
+
+function todayDdmmyy(): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "2-digit"
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find(p => p.type === t)?.value || "";
+  return `${get("day")}${get("month")}${get("year")}`;
+}
+
+// Synchronous on purpose: Node runs it to completion, so two requests can never get the same number.
+function generatePhotoId(): string {
+  const day = todayDdmmyy();
+  const prefix = `MP${day}`;
+  const re = new RegExp(`^${prefix}(\\d{3,})$`);
+  let max = lastSeqByDay.get(day) || 0;
+  for (const id of photoStore.keys()) {
+    const m = re.exec(id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  const next = max + 1;
+  lastSeqByDay.set(day, next);
+  return `${prefix}${String(next).padStart(3, "0")}`;
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -74,11 +102,12 @@ async function startServer() {
   app.post("/api/photos", (req, res) => {
     try {
       const { id, dataUrl, settings, timestamp } = req.body;
-      if (!id || !dataUrl) {
-        return res.status(400).json({ success: false, error: "Missing id or dataUrl" });
+      if (!dataUrl) {
+        return res.status(400).json({ success: false, error: "Missing dataUrl" });
       }
+      // No ID sent => this is a new photo: issue the next MPddmmyyNNN ID.
       const photo: ServerSavedPhoto = {
-        id: String(id),
+        id: id ? String(id) : generatePhotoId(),
         dataUrl,
         timestamp: Number(timestamp) || Date.now(),
         settings: settings || {}
